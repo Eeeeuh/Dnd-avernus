@@ -156,7 +156,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* journal */
 .log { display: grid; gap: 4px; }
-.log-e { padding: 5px 8px; border-left: 3px solid var(--edge-hi); background: rgba(255,255,255,.025); font-size: 14px; line-height: 1.3; }
+.log-e { padding: 5px 8px; border-left: 3px solid var(--edge-hi); background: rgba(255,255,255,.025); font-size: 14px; white-space: pre-line; line-height: 1.3; }
 .log-e.hit { border-left-color: var(--ember); }
 .log-e.warn { border-left-color: var(--ember-2); background: rgba(255,176,64,.08); }
 .log-e.beat, .log-e.turn { border-left-color: var(--soul); font-family: var(--font-d); font-size: 18px; }

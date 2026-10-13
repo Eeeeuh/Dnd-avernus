@@ -13,6 +13,19 @@ const PHYS = ['contondant', 'perforant', 'tranchant'];
 const CONDITIONS = ['à terre', 'agrippé', 'entravé', 'empoisonné', 'en feu', 'étourdi', 'aveuglé', 'effrayé', 'inconscient'];
 const TETHER_AC = 14, TETHER_HP = 12;
 
+const CHASE = [
+  [1, 2, "Vous passez à côté d'une créature originaire de l'Averne et elle vous prend en chasse (le MJ choisit la créature)."],
+  [3, 3, "Tornade de feu (90 m de haut, base 30 m) sur la route : Dex DD15 pour l'éviter. Sinon, véhicule et occupants non abrités : sauvegarde Dex DD18, 99 (18d10) dégâts de feu (moitié si réussite)."],
+  [4, 4, "Nuage de poussière : toute créature sur/dans le véhicule sans abri total est aveuglée jusqu'au début de son prochain tour (sauf protection des yeux)."],
+  [5, 5, "Piliers rocheux : abri pour le véhicule. Test de Dex DD15 (Dex du véhicule) du conducteur ; si réussi, abri important contre les attaques des autres véhicules jusqu'au début du prochain tour du conducteur."],
+  [6, 6, "Troupeau de lémures/mânes : Force ou Dex DD15 (au choix du conducteur) pour traverser sans gêne. Sinon, le troupeau compte comme 9 m de terrain difficile."],
+  [7, 7, "Chute d'une proéminence de 3 m : créature à l'extérieur non attachée = sauvegarde Dex DD15 ou jetée à bas ; dégâts de chute normaux, atterrit à terre."],
+  [8, 8, "Sol irrégulier : test de Dex DD10 pour avancer normalement. Échec : le sol compte comme 18 m de terrain difficile."],
+  [9, 9, "Carcasses de machines rouillées : si le véhicule utilise l'action Foncer ce tour, test de Dex DD10 (Dex du véhicule) ou collision avec la carcasse (voir Collisions)."],
+  [10, 10, "Le sol cède : sauvegarde de Dex DD10 du véhicule. Réussite : tonneau, se rétablit sur ses roues. Échec : s'arrête brutalement sur un flanc ou le toit. Pendant le tonneau, créature agrippée à l'extérieur non attachée : Force DD20 ou éjectée à terre (rayon 6 m)."],
+  [11, 20, "Aucune complication."],
+];
+
 class Game {
   constructor() {
     this.fx = [];
@@ -1037,6 +1050,22 @@ class Game {
     this.log({ kind: 'roll', who, text: `${expr} : ${r.text} = ${r.total}`, secret });
     this.pushFx({ k: 'dice', who, total: r.total, expr, secret, nat: r.groups.length === 1 && r.groups[0].s === 20 && r.groups[0].n === 1 ? r.groups[0].r[0] : null });
     return { total: r.total };
+  }
+  do_gmRecap(c) {
+    const g = this.needGM(c); if (g) return g;
+    const L = [`Récap pour Foundry — round ${this.s.round}`];
+    for (const t of this.tokens()) {
+      if (t.kind === 'vehicle') { L.push(`[Véhicule] ${t.name} : ${t.hp}/${t.maxHp} PV, CA ${t.ac}${t.veh && t.veh.flipped ? ', renversé' : ''}${t.veh && t.veh.stopped ? ', à l\'arrêt' : ''}`); continue; }
+      const on = t.aboard ? ` (à bord de ${(this.tok(t.aboard.v) || {}).name || '?'}, ${t.aboard.station || 'passager'})` : '';
+      L.push(`${t.side === 'enemy' ? '[Ennemi]' : '[Groupe]'} ${t.name} : ${t.dead ? 'MORT' : `${t.hp}/${t.maxHp} PV`}${t.conditions && t.conditions.length ? ', ' + t.conditions.join('/') : ''}${on}`);
+    }
+    this.log({ kind: 'sys', text: L.join('\n'), secret: true });
+  }
+  do_gmChase(c) {
+    const g = this.needGM(c); if (g) return g;
+    const r = Dice.die(20), e = CHASE.find((x) => r >= x[0] && r <= x[1]);
+    this.log({ kind: 'sys', text: `Complication de poursuite (d20 = ${r}) : ${e[2]}` });
+    this.pushFx({ k: 'dice', who: 'MJ', total: r, expr: 'd20', secret: false, nat: null });
   }
   do_chat(c, a) {
     const text = String(a.text || '').trim().slice(0, 400);

@@ -325,6 +325,8 @@
       if (S.phase === 'combat') row.append(
         h('button', { class: 'btn', text: '‹ Tour précédent', onclick: () => App.act({ a: 'gmPrevTurn' }) }),
         h('button', { class: 'btn primary', text: 'Tour suivant ›', onclick: () => App.act({ a: 'gmNext' }) }),
+        h('button', { class: 'btn small', text: 'Récap pour Foundry', onclick: () => App.act({ a: 'gmRecap' }) }),
+        h('button', { class: 'btn small', text: 'Complication de poursuite (d20)', onclick: () => App.act({ a: 'gmChase' }) }),
         h('button', { class: 'btn danger small', text: 'Terminer', onclick: () => App.act({ a: 'gmPhase', phase: 'ended' }) }));
       if (S.phase === 'ended') row.append(h('button', { class: 'btn', text: 'Revenir à la préparation', onclick: () => App.act({ a: 'gmPhase', phase: 'setup' }) }));
       p.append(row);

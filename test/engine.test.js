@@ -23,6 +23,9 @@ ok('MJ lance pour les ennemis', act(GM, { a: 'gmInitAll', side: 'enemy' }).ok);
 ok('ordre = 4 PJ + 5 ennemis', g.s.order.length === 9);
 const sorted = g.s.order.map((id) => g.tok(id).init);
 ok('ordre trié par initiative décroissante', sorted.every((v, i) => i === 0 || sorted[i - 1] >= v));
+ok('complication de poursuite (MJ)', act(GM, { a: 'gmChase' }).ok && /Complication de poursuite/.test(g.s.log[g.s.log.length - 1].text));
+ok('complication refusée au joueur', !act(P(1), { a: 'gmChase' }).ok);
+ok('récap Foundry (secret)', act(GM, { a: 'gmRecap' }).ok && g.s.log[g.s.log.length - 1].secret && /Tortionnaire/.test(g.s.log[g.s.log.length - 1].text));
 ok('combat démarre', act(GM, { a: 'gmStartCombat' }).ok && g.s.phase === 'combat' && g.s.round === 1);
 
 console.log('Tours et déplacement');

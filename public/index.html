@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e0a0b">
+<title>Descente en Averne — Raggadragga</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600;700&family=Barlow+Semi+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<canvas id="stage" aria-label="Carte de combat"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+
+<!-- chargement de la carte -->
+<div id="loader" class="hidden"><div class="loader-box"><div class="loader-title">Forge de la carte</div><div class="loader-bar"><i id="loader-fill"></i></div></div></div>
+
+<!-- lobby -->
+<div id="lobby">
+  <canvas id="lobby-embers"></canvas>
+  <div class="lobby-card">
+    <h1>Descente en Averne</h1>
+    <p class="lobby-sub">Raggadragga et les Tripes Sanglantes</p>
+    <label class="field"><span>Votre nom</span><input id="lobby-name" maxlength="20" autocomplete="nickname" placeholder="Nom du joueur"></label>
+    <div id="lobby-gm" class="gm-badge hidden">Vous entrez en tant que <b>Maître du Jeu</b></div>
+    <div id="lobby-pcs" class="pc-grid" role="radiogroup" aria-label="Choisir son personnage"></div>
+    <button id="lobby-go" class="btn-primary" type="button">Entrer dans l'Averne</button>
+    <p class="lobby-hint">Le son démarre à l'entrée. Casque conseillé.</p>
+  </div>
+</div>
+
+<!-- haut de l'écran -->
+<header id="topbar" class="hidden">
+  <div id="roundbadge"><span id="round-label">Préparation</span></div>
+  <ol id="initiative" aria-label="Ordre d'initiative"></ol>
+  <div id="topbtns">
+    <button id="btn-fit" class="iconbtn" title="Recentrer la carte (F)" aria-label="Recentrer la carte">⌖</button>
+    <button id="btn-settings" class="iconbtn" title="Réglages" aria-label="Réglages">⚙</button>
+    <button id="btn-help" class="iconbtn" title="Aide (?)" aria-label="Aide">?</button>
+  </div>
+</header>
+
+<!-- bandeau cinématique -->
+<div id="banner" aria-live="polite"><div class="banner-inner"><div class="banner-title"></div><div class="banner-sub"></div></div></div>
+<div id="speech" aria-live="polite"><div class="speech-who"></div><div class="speech-text"></div></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="suggest" class="hidden"></div>
+
+<!-- dock latéral -->
+<aside id="dock" class="hidden">
+  <button id="dock-toggle" class="dock-toggle" aria-label="Replier le panneau" title="Replier le panneau">›</button>
+  <nav id="tabs" role="tablist"></nav>
+  <div id="panels"></div>
+</aside>
+
+<!-- bas de l'écran -->
+<footer id="bottom" class="hidden">
+  <section id="card"></section>
+  <section id="actions"></section>
+  <section id="attackbar" class="hidden"></section>
+</footer>
+
+<div id="tooltip" class="hidden"></div>
+<div id="modal-back" class="hidden"><div id="modal" role="dialog" aria-modal="true"></div></div>
+
+<script src="/js/rules.js"></script>
+<script src="/js/mapgen.js"></script>
+<script src="/js/terrain.js"></script>
+<script src="/js/sprites.js"></script>
+<script src="/js/fx.js"></script>
+<script src="/js/audio.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>

@@ -3,6 +3,7 @@
 const assert = require('assert');
 const { Game } = require('../server/engine');
 const R = require('../public/js/rules.js');
+const Enc = require('../server/encounter');
 
 const g = new Game();
 g.reset();
@@ -31,17 +32,22 @@ if (other) ok('un joueur ne joue pas hors de son tour', !act(P(Number(other.owne
 // force le tour du pilote du véhicule des joueurs
 g.s.activeId = 'p1'; g.startTurn('p1');
 const vp = g.tok('v-party');
+g.geo.rocks = []; g.geo.lava = [];
 const x0 = vp.x;
 r = act(P(1), { a: 'move', id: 'v-party', x: x0 + 8, y: vp.y, r: 0 });
 ok('pilote avance de 8 cases', r.ok && Math.abs(vp.x - (x0 + 8)) < 1e-6);
 ok('équipage suit le véhicule', Math.abs(g.tok('p3').x - R.toWorld(vp, vp.veh.stations.find((s) => s.id === 'harpoonL').lx, vp.veh.stations.find((s) => s.id === 'harpoonL').ly).x) < 1e-6);
-r = act(P(1), { a: 'move', id: 'v-party', x: vp.x + 6, y: vp.y, r: 0 });
-ok('dépasse le budget de mouvement : refusé', !r.ok && /Trop loin/.test(r.err));
+ok('conduire consomme l\'action du pilote', g.tok('p1').turn.action === true);
+r = act(P(1), { a: 'move', id: 'v-party', x: vp.x + 14, y: vp.y, r: 0 });
+ok('dépasse le budget de 20 cases : refusé', !r.ok && /Trop loin/.test(r.err));
 r = act(P(1), { a: 'move', id: 'v-party', x: vp.x, y: vp.y + 3, r: 0 });
 ok('dérapage latéral refusé', !r.ok && /crabe/.test(r.err));
 ok('overdrive consomme une pièce d\'âme', act(P(1), { a: 'overdrive', id: 'v-party' }).ok && vp.veh.soulCoins === 2);
-r = act(P(1), { a: 'move', id: 'v-party', x: vp.x + 4, y: vp.y, r: 0 });
-ok('+6 cases après surrégime', r.ok);
+ok('surrégime = action bonus', g.tok('p1').turn.bonus === true);
+ok('Foncer refusé : action bonus déjà prise', !act(P(1), { a: 'dash', id: 'v-party' }).ok);
+r = act(P(1), { a: 'move', id: 'v-party', x: vp.x + 16, y: vp.y, r: 0 });
+if (!r.ok) console.log('   raison :', r.err);
+ok('+6 cases après surrégime (24 ≤ 26)', r.ok);
 ok('le joueur 2 ne pilote pas', !act(P(2), { a: 'move', id: 'v-party', x: vp.x + 1, y: vp.y }).ok);
 
 console.log('Attaques');
@@ -70,7 +76,7 @@ for (let i = 0; i < 30 && !mishapSeen; i++) { g.startTurn('p2'); act(GM, { a: 'a
 ok('gros coups : dégâts ou avarie', mishapSeen);
 
 console.log('Harpon, câble, treuil');
-const ve2 = g.tok('v-enemy'); ve2.hp = 120; ve2.veh.destroyed = false;
+const ve2 = g.tok('v-enemy'); ve2.hp = 200; ve2.veh.destroyed = false;
 const vp2 = g.tok('v-party');
 vp2.x = 20; vp2.y = 24; vp2.r = 0; g.syncCrew(vp2);
 ve2.x = 30; ve2.y = 24; ve2.r = 180; g.syncCrew(ve2);
@@ -88,11 +94,37 @@ console.log('Éperonnage');
 vp2.x = 20; vp2.y = 24; vp2.r = 0; g.syncCrew(vp2); ve2.x = 25.2; ve2.y = 24; g.syncCrew(ve2);
 g.s.tethers = [];
 g.startTurn('p1'); g.s.activeId = 'p1';
+vp2.veh.distTurn = 0; vp2.veh.ramUsed = false; vp2.veh.stopped = false;
 r = act(P(1), { a: 'ram', id: 'v-party', target: 'v-enemy' });
-ok('éperonner sans élan : refusé', !r.ok && /3 cases/.test(r.err));
-vp2.veh.movedTurn = 5; vp2.veh.ramUsed = false;
+ok('éperonner sans avoir roulé : refusé', !r.ok && /roulé/.test(r.err));
+vp2.veh.movedTurn = 10; vp2.veh.distTurn = 10; vp2.veh.ramUsed = false;
+const hpA = vp2.hp, hpB = ve2.hp;
 r = act(P(1), { a: 'ram', id: 'v-party', target: 'v-enemy' });
-ok('éperonnage avec élan : accepté', r.ok);
+ok('collision avec élan : acceptée', r.ok);
+ok('collision : les deux engins encaissent 5d6 (≥ seuil)', vp2.hp < hpA && ve2.hp < hpB);
+ok('collision : l\'engin s\'immobilise', vp2.veh.stopped === true && !act(P(1), { a: 'move', id: 'v-party', x: vp2.x - 1, y: vp2.y, r: 0 }).ok);
+r = act(P(1), { a: 'ram', id: 'v-party', target: 'v-enemy' });
+ok('une seule collision par tour', !r.ok);
+
+console.log('Règles du livre : CA, dash, avaries, immunités');
+const vt = g.tok('v-enemy'); vt.veh.movedTurn = 0;
+ok('CA 17 à l\'arrêt', g.targetAC(vt) === 17);
+vt.veh.movedTurn = 3;
+ok('CA 19 en mouvement', g.targetAC(vt) === 19);
+ok('immunité feu/poison/psychique', vt.immune.includes('feu') && vt.immune.includes('poison') && vt.immune.includes('psychique'));
+const seen = new Set();
+for (let i = 0; i < 400; i++) { const t0 = g.tok('v-enemy'); t0.veh.mishaps = []; t0.veh.flipped = false; t0.veh.stopped = false; t0.veh.dmgThreshold = 10; t0.veh.jam = null; seen.add(g.rollMishap(t0).effect); }
+ok('tableau d\'avaries d20 : les 8 résultats sortent', seen.size === 8);
+const vv = g.tok('v-party'); vv.veh.mishaps = []; vv.veh.dmgThreshold = 10; vv.veh.flipped = false; vv.veh.stopped = false;
+const armor = Enc.MISHAPS.find((m) => m.effect === 'armor');
+vv.veh.mishaps.push({ id: armor.id, name: armor.name, effect: 'armor', dc: 2, ability: 'str', restore: 10 }); vv.veh.dmgThreshold = 0;
+g.startTurn('p2'); g.s.activeId = 'p2'; g.tok('p2').aboard = { v: 'v-party', lx: 0, ly: 0, station: 'free' }; vv.veh.movedTurn = 0;
+r = act(P(2), { a: 'repair', id: 'v-party', who: 'p2' });
+ok('réparation (DD 2) : blindage restauré', r.ok !== false && vv.veh.mishaps.length === 0 && vv.veh.dmgThreshold === 10);
+vv.veh.mishaps = []; g.rollMishap; vv.veh.flipped = true;
+ok('retourné : pas de conduite pour un joueur', (vv.veh.mishaps.push({ id: 8, name: 'Retournement', effect: 'flip' }), g.startTurn('p1'), !act(P(1), { a: 'move', id: 'v-party', x: vv.x + 1, y: vv.y, r: 0 }).ok));
+act(GM, { a: 'repair', id: 'v-party' });
+ok('le MJ redresse l\'engin', vv.veh.flipped === false);
 
 console.log('Fin de partie');
 ok('GM peut révéler / cacher', act(GM, { a: 'gmReveal', id: 'jibbs', hidden: true }).ok && g.tok('jibbs').hidden === true);

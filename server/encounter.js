@@ -9,18 +9,22 @@
  */
 
 const WEAPONS = {
-  chomper: { name: 'Mâchoire broyeuse (Chomper)', range: 2.5, toHit: 6, dmg: '3d10', type: 'perforant', melee: true, provisional: true, note: 'Contact : la gueule de fer se referme sur la cible.' },
-  wrecking: { name: 'Boulet de démolition', range: 3.5, toHit: 6, dmg: '3d10+3', type: 'contondant', melee: true, provisional: true, note: 'Balancé au bout de sa chaîne sur le flanc.' },
-  harpoon: { name: 'Lance-harpon', range: 14, toHit: 6, dmg: '2d10', type: 'perforant', tether: true, provisional: true, note: 'Sur un véhicule touché, le harpon reste planté et le câble le relie à votre engin.' },
+  // Valeurs du Demon Grinder (Descent into Avernus, appendice « machines de guerre infernales »). 1 case = 5 ft.
+  chomper: { name: 'Mâchoire broyeuse (Chomper)', range: 1, toHit: 9, dmg: '6d6+4', type: 'perforant', melee: true, mag: 'magic', grind: true, note: "Cible à 0 PV : broyée et expulsée par les tuyaux latéraux." },
+  wrecking: { name: 'Boulet de démolition', range: 3, toHit: 9, dmg: '8d8+4', type: 'contondant', melee: true, mag: 'magic', vsObject: true, note: 'Allonge 15 ft. Dégâts doublés contre objets et structures (véhicules compris, interprétation).' },
+  harpoon: { name: 'Lance-harpon', range: 24, toHit: 5, dmg: '2d8', type: 'perforant', tether: true, mag: 'magic', provisional: true, note: "Portée 120 ft. Le câble qui relie les véhicules est une règle maison (provisoire)." },
 };
 
+// Tableau d'avaries d20 du livre. Les DD de réparation sont ma meilleure lecture d'un texte altéré : à vérifier.
 const MISHAPS = [
-  { id: 1, name: 'Moteur noyé', text: "Vitesse réduite de moitié jusqu'à la fin du prochain tour du pilote.", effect: 'slow' },
-  { id: 2, name: 'Direction bloquée', text: "L'engin ne peut plus tourner. Réparation : une action et un jet de Dextérité (outils) DD 12.", effect: 'noturn' },
-  { id: 3, name: 'Incendie à bord', text: "L'équipage subit 1d6 dégâts de feu (jet de Dextérité DD 12 pour moitié).", effect: 'fire' },
-  { id: 4, name: 'Arme enrayée', text: "Une arme au hasard est inutilisable jusqu'au début du prochain tour du pilote.", effect: 'jam' },
-  { id: 5, name: 'Secousse', text: "Tout l'équipage fait un jet de Dextérité DD 12 ou tombe à terre.", effect: 'shake' },
-  { id: 6, name: 'Plaque arrachée', text: 'Un pan de blindage saute : CA réduite de 1 jusqu\'à réparation.', effect: 'ac' },
+  { id: 1, min: 1, max: 1, name: 'Éruption du moteur', text: "Le feu envahit l'engin : toute créature qui commence son tour à bord subit 3d6 dégâts de feu jusqu'à réparation.", effect: 'flare', dc: 15, ability: 'dex' },
+  { id: 2, min: 2, max: 4, name: 'Direction bloquée', text: "L'engin ne peut plus que rouler droit et rate automatiquement ses jets de Dextérité.", effect: 'noturn', dc: 15, ability: 'dex' },
+  { id: 3, min: 5, max: 7, name: 'Fournaise fissurée', text: 'Vitesse réduite de 30 ft (6 cases) jusqu’à réparation.', effect: 'slow6', dc: 15, ability: 'str' },
+  { id: 4, min: 8, max: 10, name: 'Arme enrayée', text: "Une arme (au choix du MJ) est inutilisable jusqu'à réparation.", effect: 'jam', dc: 20, ability: 'str' },
+  { id: 5, min: 11, max: 13, name: 'Fumée aveuglante', text: 'Le poste de pilotage est plein de fumée : le pilote est aveuglé.', effect: 'smoke', dc: 15, ability: 'dex' },
+  { id: 6, min: 14, max: 16, name: 'Blindage arraché', text: 'Seuil de dégâts réduit de 10 jusqu’à réparation.', effect: 'armor', dc: 15, ability: 'str' },
+  { id: 7, min: 17, max: 19, name: 'Essieu faussé', text: "Désavantage à tous les jets de Dextérité de l'engin et aux jets de caractéristique et d'attaque de l'équipage.", effect: 'axle', dc: 20, ability: 'dex' },
+  { id: 8, min: 20, max: 20, name: 'Retournement', text: "L'engin se renverse et s'immobilise. À bord : Force DD 15 ou 3d6 dégâts contondants. Il ne peut se redresser seul.", effect: 'flip', dc: null, ability: null },
 ];
 
 const PC_COLORS = ['#5CF2C8', '#FFB020', '#C79BFF', '#5AA9FF'];
@@ -36,7 +40,7 @@ function mkPc(i) {
   return {
     id: 'p' + (i + 1), name: 'Aventurier ' + (i + 1), kind: 'creature', side: 'party', sprite: 'pc',
     owner: 'p' + (i + 1), color: PC_COLORS[i], size: 1, x: 0, y: 0, r: 0,
-    hp: 58, maxHp: 58, ac: 16, speed: 6, initMod: 2, dexSave: 2, init: null,
+    hp: 58, maxHp: 58, ac: 16, speed: 6, initMod: 2, dexSave: 2, strSave: 2, init: null,
     attacks: pcAttacks(), conditions: [], hidden: false,
   };
 }
@@ -86,13 +90,13 @@ function mkGrinder(id, name, side, extra = {}) {
     id, name, kind: 'vehicle', side, sprite: side === 'party' ? 'grinder-party' : 'grinder-enemy',
     color: side === 'party' ? '#5CF2C8' : '#FF5A1F',
     len: 4, wid: 3, x: 0, y: 0, r: 0,
-    hp: 120, maxHp: 120, ac: 19, speed: 12, conditions: [], hidden: false, init: null,
+    hp: 200, maxHp: 200, ac: 19, speed: 20, immune: ['feu', 'poison', 'psychique'], conditions: [], hidden: false, init: null,
     veh: {
       dmgThreshold: 10, mishapThreshold: 20, soulCoins: side === 'party' ? 3 : 0, pilotBonus: 5,
-      stations: stations(), movedTurn: 0, dashed: false, overdrive: false,
+      stations: stations(), movedTurn: 0, distTurn: 0, dashed: false, dashLeft: 4, overdrive: false, driving: false, stopped: false, flipped: false, crushed: [],
       mishaps: [], jam: null, destroyed: false,
     },
-    sheet: 'Broyeur de démons — véhicule de guerre infernal — valeurs provisoires [maison]',
+    sheet: 'Broyeur de démons — véhicule de guerre infernal — valeurs du livre (Demon Grinder), règles de déplacement maison',
   }, extra);
 }
 

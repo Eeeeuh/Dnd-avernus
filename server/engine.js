@@ -98,7 +98,7 @@ class Game {
   }
   sysLog(text, kind = 'sys') { this.log({ kind, text }); }
   nameOf(t) { return t ? t.name : '?'; }
-  targetAC(t) { return t.ac; }
+  targetAC(t) { return t.kind === 'vehicle' && !(t.veh.movedTurn > 0) ? t.ac - 2 : t.ac; } // CA 17 à l'arrêt, 19 en mouvement
 
   /* ---------- vue filtrée pour un client ---------- */
   viewFor(c) {
@@ -114,7 +114,7 @@ class Game {
         delete copy.hp; delete copy.maxHp; delete copy.ac; delete copy.attacks; delete copy.sheet; delete copy.notes;
         delete copy.initMod; delete copy.dexSave; delete copy.immuneNonMagical; delete copy.relentless; delete copy.relentlessUsed;
         if (copy.veh) {
-          delete copy.veh.dmgThreshold; delete copy.veh.mishapThreshold; delete copy.veh.pilotBonus; delete copy.veh.soulCoins;
+          delete copy.veh.dmgThreshold; delete copy.veh.mishapThreshold; delete copy.veh.pilotBonus; delete copy.veh.soulCoins; delete copy.veh.dashLeft; delete copy.immune;
         }
       }
       tokens[t.id] = copy;
@@ -210,9 +210,16 @@ class Game {
     t.turn = { moved: 0, attacks: 0, action: false, bonus: false, reaction: false };
     const v = this.vehicleOf(t);
     if (v && t.aboard.station === 'helm') {
-      v.veh.movedTurn = 0; v.veh.dashed = false; v.veh.overdrive = false; v.veh.ramUsed = false;
+      v.veh.movedTurn = 0; v.veh.distTurn = 0; v.veh.dashed = false; v.veh.overdrive = false; v.veh.ramUsed = false; v.veh.driving = false; v.veh.stopped = false; v.veh.crushed = [];
       v.veh.mishaps = v.veh.mishaps.filter((m) => { if (m.ttl === undefined) return true; m.ttl -= 1; return m.ttl > 0; });
-      if (v.veh.jam) { v.veh.jam.ttl -= 1; if (v.veh.jam.ttl <= 0) v.veh.jam = null; }
+      
+    }
+    // Éruption du moteur : dégâts de feu à qui commence son tour à bord
+    const ev = this.vehicleOf(t);
+    if (ev && ev.veh.mishaps.some((m) => m.effect === 'flare') && !t.dead) {
+      const dm = Dice.roll('3d6').total;
+      this.sysLog(`🔥 ${t.name} commence son tour dans un engin en feu : ${dm} dégâts de feu.`, 'warn');
+      this.damageToken(t, dm, 'feu', {});
     }
     this.pushFx({ k: 'turn', id, name: t.name, round: s.round, side: t.side, hidden: t.hidden });
     this.log({ kind: 'turn', text: `Tour de ${t.name}`, secret: t.hidden });
@@ -255,8 +262,8 @@ class Game {
   clampPos(x, y, pad = 0.5) { return { x: R.clamp(x, pad, this.s.map.cols - pad), y: R.clamp(y, pad, this.s.map.rows - pad) }; }
   vehicleBudget(v) {
     let b = v.speed * (v.veh.dashed ? 2 : 1) + (v.veh.overdrive ? 6 : 0);
-    if (v.veh.mishaps.some((m) => m.effect === 'slow')) b = Math.floor(b / 2);
-    return b;
+    if (v.veh.mishaps.some((m) => m.effect === 'slow6')) b -= 6;
+    return Math.max(0, b);
   }
   overlapVehicles(a, b) {
     for (const p of R.hullSamples(a)) if (R.inHull(b, p.x, p.y, -0.15)) return true;
@@ -288,6 +295,9 @@ class Game {
     const pilot = this.pilotOf(v);
     if (!gm && !pilot) return { err: 'Personne aux commandes.' };
     if (!gm && s.phase === 'combat' && s.activeId !== pilot.id) return { err: "Ce n'est pas le tour du pilote." };
+    if (!gm && v.veh.flipped) return { err: "L'engin est retourné : il ne peut plus rouler." };
+    if (!gm && v.veh.stopped) return { err: "L'engin s'est immobilisé dans la collision." };
+    if (!gm && s.phase === 'combat' && !v.veh.driving && pilot.turn && pilot.turn.action) return { err: "Le pilote a déjà utilisé son action : conduire demande l'action « Conduire »." };
     const p = this.clampPos(x, y, 2);
     const cost = R.vehicleMoveCost(v, p.x, p.y, nr);
     if (!cost.ok && !gm) return { err: cost.reason };
@@ -315,7 +325,10 @@ class Game {
     }
     const from = { x: v.x, y: v.y, r: v.r };
     v.x = p.x; v.y = p.y; v.r = nr;
-    if (combat) v.veh.movedTurn += cost.cost;
+    if (combat) {
+      v.veh.movedTurn += cost.cost; v.veh.distTurn += cost.dist;
+      if (!v.veh.driving && !gm && pilot) { v.veh.driving = true; pilot.turn.action = true; }
+    }
     this.syncCrew(v);
     this.pushFx({ k: 'drive', id: v.id, from, to: { x: v.x, y: v.y, r: v.r }, cost: cost.cost, dir: cost.dir });
     // zone de lave : alerte, résolution par le MJ
@@ -416,7 +429,11 @@ class Game {
       if (target.immuneNonMagical && PHYS.includes(w.type) && mag === 'none') { dealt = 0; res.immune = true; }
     }
     if (!isTether && target.kind === 'vehicle') {
-      if (dealt < target.veh.dmgThreshold) { dealt = 0; res.ricochet = true; }
+      if ((target.immune || []).includes(w.type)) { dealt = 0; res.immune = true; }
+      else {
+        if (w.vsObject) dealt *= 2;
+        if (dealt < target.veh.dmgThreshold) { dealt = 0; res.ricochet = true; }
+      }
     }
     res.applied = dealt;
     if (dealt > 0) {
@@ -594,55 +611,62 @@ class Game {
     }
   }
   rollMishap(v) {
-    const d = Dice.die(6);
-    const m = Enc.MISHAPS.find((x) => x.id === d);
+    const d = Dice.die(20);
+    const m = Enc.MISHAPS.find((x) => d >= x.min && d <= x.max);
     this.pushFx({ k: 'mishap', id: v.id, name: m.name, text: m.text, x: v.x, y: v.y });
+    this.sysLog(`⚙ AVARIE (d20 = ${d}) : ${m.name}. ${m.text}`, 'warn');
     const crew = this.crewOf(v.id).filter((c) => !c.dead);
-    switch (m.effect) {
-      case 'slow': v.veh.mishaps.push({ id: m.id, name: m.name, effect: 'slow', ttl: 2 }); break;
-      case 'noturn': v.veh.mishaps.push({ id: m.id, name: m.name, effect: 'noturn' }); break;
-      case 'ac': v.ac = Math.max(0, v.ac - 1); v.veh.mishaps.push({ id: m.id, name: m.name, effect: 'ac' }); break;
-      case 'jam': {
-        const ws = v.veh.stations.filter((s) => s.kind === 'weapon');
-        const st = ws[Dice.die(ws.length) - 1];
-        v.veh.jam = { station: st.id, ttl: 2 };
-        this.sysLog(`Arme enrayée : ${st.label}.`, 'warn');
-        break;
-      }
-      case 'fire':
-        for (const c of crew) {
-          const sv = Dice.d20().kept + (c.dexSave || 0);
-          const dm = Dice.roll('1d6').total;
-          const taken = sv >= 12 ? Math.floor(dm / 2) : dm;
-          this.log({ kind: 'sys', text: `Incendie : ${c.name} jet de Dex ${sv} (DD 12) — ${taken} dégâts de feu.` });
-          if (taken) this.damageToken(c, taken, 'feu', {});
-        }
-        break;
-      case 'shake':
-        for (const c of crew) {
-          const sv = Dice.d20().kept + (c.dexSave || 0);
-          if (sv < 12 && !c.conditions.includes('à terre')) c.conditions.push('à terre');
-          this.log({ kind: 'sys', text: `Secousse : ${c.name} jet de Dex ${sv} (DD 12) — ${sv < 12 ? 'tombe à terre' : 'tient bon'}.` });
-        }
-        break;
+    const entry = { id: m.id, name: m.name, effect: m.effect, dc: m.dc, ability: m.ability };
+    if (m.effect === 'armor') { const cut = Math.min(10, v.veh.dmgThreshold); v.veh.dmgThreshold -= cut; entry.restore = cut; }
+    if (m.effect === 'jam') {
+      const ws = v.veh.stations.filter((x) => x.kind === 'weapon');
+      const st = ws[Dice.die(ws.length) - 1];
+      v.veh.jam = { station: st.id }; entry.station = st.id; entry.name += ` (${st.label})`;
     }
+    if (m.effect === 'smoke') { const p = this.pilotOf(v); if (p) entry.pilot = p.id; }
+    if (m.effect === 'flip') {
+      v.veh.flipped = true; v.veh.stopped = true;
+      for (const c of crew) {
+        const sv = Dice.d20().kept + (c.strSave || 0);
+        if (!c.conditions.includes('à terre')) c.conditions.push('à terre');
+        if (sv < 15) { const dm = Dice.roll('3d6').total; this.log({ kind: 'sys', text: `Retournement : ${c.name} Force ${sv} (DD 15) — ${dm} dégâts contondants.` }); this.damageToken(c, dm, 'contondant', {}); }
+        else this.log({ kind: 'sys', text: `Retournement : ${c.name} Force ${sv} (DD 15) — indemne, mais à terre.` });
+      }
+    }
+    // une même avarie ne se cumule pas
+    if (!v.veh.mishaps.some((x) => x.effect === m.effect && m.effect !== 'jam')) v.veh.mishaps.push(entry);
+    else if (m.effect === 'armor') v.veh.dmgThreshold += entry.restore || 0;
     return m;
   }
   do_repair(c, a) {
     const v = this.tok(a.id);
     if (!v || v.kind !== 'vehicle') return { err: 'Véhicule invalide.' };
+    const gm = c.role === 'gm' && !c.ai;
+    const m = v.veh.mishaps.find((x, i) => (a.mi === undefined ? true : i === Number(a.mi)));
+    if (!m) return { err: 'Rien à réparer.' };
+    if (m.effect === 'flip') {
+      if (!gm) return { err: "Un engin retourné ne se redresse pas seul : le MJ décide (grue, créature géante, démon…)." };
+      v.veh.flipped = false; v.veh.stopped = false; v.veh.mishaps = v.veh.mishaps.filter((x) => x !== m);
+      this.sysLog(`${v.name} est remis d'aplomb.`, 'hit'); return;
+    }
     const who = this.tok(a.who);
     if (!who || !this.canControl(c, who)) return { err: "Ce n'est pas votre personnage." };
-    const m = v.veh.mishaps.find((x) => x.effect === 'noturn' || x.effect === 'ac');
-    if (!m) return { err: 'Rien à réparer.' };
-    if (c.role !== 'gm' && this.s.phase === 'combat' && this.s.activeId !== who.id) return { err: "Ce n'est pas votre tour." };
-    const r = Dice.d20().kept + (who.dexSave || 0);
-    if (r >= 12) {
+    if (!who.aboard || who.aboard.v !== v.id) return { err: 'Il faut être à bord, à portée de la zone endommagée.' };
+    if (['helm'].includes(who.aboard.station) || (who.aboard.station && who.aboard.station !== 'free' && v.veh.stations.find((x) => x.id === who.aboard.station && x.kind === 'weapon')))
+      return { err: 'Un réparateur ne peut pas tenir le poste de pilotage ou une arme : quittez votre poste.' };
+    if (!gm && this.s.phase === 'combat' && this.s.activeId !== who.id) return { err: "Ce n'est pas votre tour." };
+    if (!gm && this.s.phase === 'combat' && who.turn && who.turn.action) return { err: 'Action déjà utilisée.' };
+    const moving = v.veh.movedTurn > 0;
+    const d = moving ? Dice.d20('dis') : Dice.d20();
+    const mod = (m.ability === 'str' ? who.strSave : who.dexSave) || 0;
+    const r = d.kept + mod;
+    if (this.s.phase === 'combat' && who.turn) who.turn.action = true;
+    if (r >= m.dc) {
       v.veh.mishaps = v.veh.mishaps.filter((x) => x !== m);
-      if (m.effect === 'ac') v.ac += 1;
-      if (this.s.phase === 'combat') who.turn.action = true;
-      this.sysLog(`${who.name} répare « ${m.name} » (${r} contre DD 12).`, 'hit');
-    } else this.sysLog(`${who.name} échoue à réparer « ${m.name} » (${r} contre DD 12).`, 'attack');
+      if (m.effect === 'armor') v.veh.dmgThreshold += m.restore || 0;
+      if (m.effect === 'jam') v.veh.jam = null;
+      this.sysLog(`${who.name} répare « ${m.name} » (${r} contre DD ${m.dc}${moving ? ', désavantage : engin en mouvement' : ''}).`, 'hit');
+    } else this.sysLog(`${who.name} échoue à réparer « ${m.name} » (${r} contre DD ${m.dc}${moving ? ', désavantage : engin en mouvement' : ''}).`, 'attack');
   }
 
   /* ---------- règles du véhicule ---------- */
@@ -658,70 +682,90 @@ class Game {
     const v = this.tok(a.id);
     if (!v || v.kind !== 'vehicle') return { err: 'Véhicule invalide.' };
     const n = this.needPilotTurn(c, v); if (n.err) return n;
+    const gm = c.role === 'gm' && !c.ai;
     if (v.veh.dashed) return { err: 'Déjà en pleine accélération.' };
-    if (this.s.phase === 'combat' && n.pilot.turn.action && c.role !== 'gm') return { err: 'Action déjà utilisée ce tour.' };
-    v.veh.dashed = true;
-    if (this.s.phase === 'combat') n.pilot.turn.action = true;
+    if (!gm && v.veh.dashLeft <= 0) return { err: 'Plus de Foncer ce combat (limite = modificateur de Constitution).' };
+    if (this.s.phase === 'combat' && n.pilot.turn.bonus && !gm) return { err: 'Action bonus déjà utilisée ce tour.' };
+    v.veh.dashed = true; v.veh.dashLeft = Math.max(0, v.veh.dashLeft - 1);
+    if (this.s.phase === 'combat') n.pilot.turn.bonus = true;
     this.pushFx({ k: 'dash', id: v.id });
-    this.sysLog(`${n.pilot.name} écrase l'accélérateur : vitesse doublée ce tour.`);
+    this.sysLog(`${n.pilot.name} fonce (action bonus) : vitesse doublée ce tour (${v.veh.dashLeft} restant${v.veh.dashLeft > 1 ? 's' : ''}).`);
   }
   do_overdrive(c, a) {
     const v = this.tok(a.id);
     if (!v || v.kind !== 'vehicle') return { err: 'Véhicule invalide.' };
     const n = this.needPilotTurn(c, v); if (n.err) return n;
+    const gm = c.role === 'gm' && !c.ai;
     if (v.veh.overdrive) return { err: 'Surrégime déjà actif.' };
-    if (v.veh.soulCoins <= 0) return { err: "Plus de pièces d'âme pour alimenter le moteur." };
-    if (this.s.phase === 'combat' && n.pilot.turn.bonus && c.role !== 'gm') return { err: 'Action bonus déjà utilisée.' };
-    v.veh.soulCoins -= 1; v.veh.overdrive = true;
+    if (!gm && v.veh.soulCoins <= 0) return { err: "Plus de fiole d'ichor démoniaque." };
+    if (this.s.phase === 'combat' && n.pilot.turn.bonus && !gm) return { err: 'Action bonus déjà utilisée ce tour.' };
+    v.veh.soulCoins = Math.max(0, v.veh.soulCoins - 1); v.veh.overdrive = true;
     if (this.s.phase === 'combat') n.pilot.turn.bonus = true;
     this.pushFx({ k: 'overdrive', id: v.id });
-    this.sysLog(`${n.pilot.name} jette une pièce d'âme dans le moteur : +6 cases ce tour.`);
+    this.sysLog(`${n.pilot.name} verse une fiole d'ichor dans la fournaise : +30 ft (6 cases) de vitesse.`);
   }
+  // Dégâts d'écrasement aux occupants d'un véhicule : Force DD 15, dégâts ou moitié (seulement si l'engin a vraiment encaissé).
+  crashCrew(veh, dmg) {
+    for (const c of this.crewOf(veh.id).filter((q) => !q.dead)) {
+      const sv = Dice.d20().kept + (c.strSave || 0);
+      const taken = sv >= 15 ? Math.floor(dmg / 2) : dmg;
+      this.log({ kind: 'sys', text: `Choc : ${c.name} Force ${sv} (DD 15) — ${taken} dégâts contondants.` });
+      if (taken) this.damageToken(c, taken, 'contondant', {});
+    }
+  }
+  // Éperonner : collision (véhicule) ou Roues broyeuses (créature).
   do_ram(c, a) {
     const v = this.tok(a.id);
     const target = this.tok(a.target);
     if (!v || v.kind !== 'vehicle' || !target || target.id === v.id) return { err: 'Éperonnage invalide.' };
+    if (target.aboard) return { err: 'Ciblez le véhicule, pas son équipage.' };
     const n = this.needPilotTurn(c, v); if (n.err) return n;
     const gm = c.role === 'gm' && !c.ai;
     const combat = this.s.phase === 'combat';
-    if (!gm && combat) {
-      if (v.veh.movedTurn < 3) return { err: 'Il faut avoir roulé au moins 3 cases ce tour pour éperonner.' };
-      if (v.veh.ramUsed) return { err: 'Déjà éperonné ce tour.' };
-      if (n.pilot.turn.action) return { err: 'Action déjà utilisée ce tour.' };
-    }
+    if (v.veh.flipped && !gm) return { err: "L'engin est retourné." };
+    if (!gm && combat && !(v.veh.distTurn > 0)) return { err: "Il faut avoir roulé ce tour : l'élan fait les dégâts (1d6 par 10 ft parcourus)." };
     const gap = R.gap(v, target);
     if (!gm && gap > 1.2) return { err: `Trop loin pour éperonner (${gap.toFixed(1)} cases).` };
-    let hit, dealt = 0, roll, extra = '';
+    let dealt = 0, hit = true, text = '';
     if (target.kind === 'vehicle') {
-      const d = Dice.d20();
-      const tot = d.kept + (v.veh.pilotBonus || 0);
-      hit = d.kept === 20 || (d.kept !== 1 && tot >= target.ac);
-      roll = `d20(${d.kept}) +${v.veh.pilotBonus || 0} = ${tot} vs CA ${target.ac}`;
-      if (hit) {
-        const dm = Dice.roll('3d10', { crit: d.kept === 20 });
-        dealt = dm.total;
-        const applied = dealt < target.veh.dmgThreshold ? 0 : dealt;
-        if (applied) { this.damageToken(target, applied, 'contondant', {}); if (!target.veh.destroyed && applied >= target.veh.mishapThreshold) { const m = this.rollMishap(target); extra = ` ⚙ AVARIE : ${m.name}.`; } }
-        const back = Math.floor(dealt / 2);
-        if (back >= v.veh.dmgThreshold) this.damageToken(v, back, 'contondant', {});
-        dealt = applied;
+      if (!gm && v.veh.ramUsed) return { err: "L'engin s'est déjà immobilisé dans une collision ce tour." };
+      const dice = Math.max(1, Math.min(20, Math.floor((v.veh.distTurn * 5) / 10)));
+      const dm = Dice.roll(`${dice}d6`);
+      const dmg = dm.total;
+      const hurt = (veh) => dmg >= veh.veh.dmgThreshold;
+      let tdone = 0, mtxt = '';
+      if (hurt(target)) {
+        this.damageToken(target, dmg, 'contondant', {}); tdone = dmg;
+        if (!target.veh.destroyed && dmg >= target.veh.mishapThreshold) { const mm = this.rollMishap(target); mtxt += ` Avarie de ${target.name} : ${mm.name}.`; }
+        this.crashCrew(target, dmg);
       }
+      if (hurt(v)) {
+        this.damageToken(v, dmg, 'contondant', {});
+        if (!v.veh.destroyed && dmg >= v.veh.mishapThreshold) { const mm = this.rollMishap(v); mtxt += ` Avarie de ${v.name} : ${mm.name}.`; }
+        this.crashCrew(v, dmg);
+      }
+      v.veh.ramUsed = true; v.veh.stopped = true;
+      dealt = tdone;
+      text = `${dice}d6 (${dm.text}) = ${dmg} contondants pour chacun ; ${hurt(target) ? target.name + ' encaisse' : 'trop faible pour ' + target.name + ' (seuil ' + target.veh.dmgThreshold + ')'}, ${hurt(v) ? v.name + ' encaisse aussi' : v.name + ' ne subit rien'}. L'engin s'immobilise.${mtxt}`;
     } else {
+      // Roues broyeuses : Dex DD 11 ou 4d10 contondants et à terre (double si déjà à terre), une fois par créature et par tour
+      if (!gm && v.veh.crushed.includes(target.id)) return { err: 'Cette créature a déjà été écrasée ce tour.' };
       const d = Dice.d20();
       const sv = d.kept + (target.dexSave || 0);
-      hit = sv < 15;
-      roll = `jet de Dex ${sv} (DD 15)`;
-      const dm = Dice.roll('3d10').total;
-      dealt = hit ? dm : Math.floor(dm / 2);
-      if (dealt) this.damageToken(target, dealt, 'contondant', {});
-      if (hit && !target.conditions.includes('à terre')) target.conditions.push('à terre');
-      hit = true; // un impact a toujours lieu (demi-dégâts si esquivé)
-      extra = d.kept + (target.dexSave || 0) >= 15 ? ' (esquive partielle)' : ' (renversé)';
+      v.veh.crushed.push(target.id);
+      if (sv >= 11) { hit = false; text = `${target.name} se jette de côté (Dex ${sv} contre DD 11).`; }
+      else {
+        const prone = target.conditions.includes('à terre');
+        const dm = Dice.roll(prone ? '8d10' : '4d10').total;
+        dealt = dm;
+        const immune = target.immuneNonMagical && !prone && false;
+        this.damageToken(target, dealt, 'contondant', {});
+        if (!target.conditions.includes('à terre')) target.conditions.push('à terre');
+        text = `${target.name} est écrasé (Dex ${sv} contre DD 11) : ${dealt} contondants${prone ? ' (déjà à terre : dégâts doublés)' : ', renversé'}.${immune ? '' : ''}`;
+      }
     }
-    v.veh.ramUsed = true;
-    if (!gm && combat) n.pilot.turn.action = true;
     this.pushFx({ k: 'ram', id: v.id, to: target.id, hit, dmg: dealt, fx: v.x, fy: v.y, tx: target.x, ty: target.y });
-    this.sysLog(`🐗 ${v.name} éperonne ${target.name} : ${roll} — ${hit ? dealt + ' dégâts' : 'manqué'}${extra}`, hit ? 'hit' : 'attack');
+    this.sysLog(`🐗 ${v.name} percute ${target.name} : ${text}`, hit ? 'hit' : 'attack');
     this.afterDamage();
   }
   do_reel(c, a) {
@@ -954,13 +998,13 @@ class Game {
         const nr = v.r + R.clamp(turn, -90, 90);
         const turnCost = Math.abs(R.angDiff(v.r, nr)) / 45;
         let budget = this.vehicleBudget(v);
-        if (dist > budget + 8 && !t.turn.action) { tryAct({ a: 'dash', id: v.id }); budget = this.vehicleBudget(v); }
+        if (dist > budget + 8 && !t.turn.bonus && v.veh.dashLeft > 0) { tryAct({ a: 'dash', id: v.id }); budget = this.vehicleBudget(v); }
         const contact = (v.len + target.len) / 2 + 0.2;
         const go = Math.max(0, Math.min(budget - turnCost - v.veh.movedTurn, dist - contact));
         const dir = R.RAD * nr;
         if (go > 0.2 || turnCost > 0) tryAct({ a: 'move', id: v.id, x: v.x + Math.cos(dir) * go, y: v.y + Math.sin(dir) * go, r: nr });
         const gap = R.gap(v, target);
-        if (gap <= 1.2 && v.veh.movedTurn >= 3 && !t.turn.action) tryAct({ a: 'ram', id: v.id, target: target.id });
+        if (gap <= 1.2 && v.veh.distTurn > 0 && !v.veh.ramUsed) tryAct({ a: 'ram', id: v.id, target: target.id });
         else if (!t.turn.action) {
           const ci = (t.attacks || []).findIndex((w) => w.rays && w.uses && w.uses.left > 0);
           const tg = partyCreatures.sort((p, q) => R.dist(t, p) - R.dist(t, q))[0];

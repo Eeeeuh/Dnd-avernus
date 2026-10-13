@@ -31,8 +31,8 @@
   App.myCrew = (v) => App.crewOf(v.id).filter((c) => App.canControl(c));
   App.vehicleBudget = (v) => {
     let b = v.speed * (v.veh.dashed ? 2 : 1) + (v.veh.overdrive ? 6 : 0);
-    if ((v.veh.mishaps || []).some((m) => m.effect === 'slow')) b = Math.floor(b / 2);
-    return b;
+    if ((v.veh.mishaps || []).some((m) => m.effect === 'slow6')) b -= 6;
+    return Math.max(0, b);
   };
   App.myLabel = () => { const t = App.you.slot && App.tok(App.you.slot); return t ? `${t.name} (${App.you.name})` : App.you.name; };
   App.distToSeg = (p, a, b) => {

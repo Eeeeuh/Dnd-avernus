@@ -160,7 +160,8 @@
     if (t.kind === 'vehicle') {
       const b = App.vehicleBudget(t), left = Math.max(0, b - t.veh.movedTurn);
       stats.append(h('span', { class: 'stat' }, h('b', { text: left.toFixed(1).replace('.0', '') + '/' + b }), 'cases'));
-      if (t.veh.soulCoins !== undefined) stats.append(h('span', { class: 'stat soul' }, h('b', { text: String(t.veh.soulCoins) }), "pièces d'âme"));
+      if (t.veh.soulCoins !== undefined) stats.append(h('span', { class: 'stat soul' }, h('b', { text: String(t.veh.soulCoins) }), "fioles d'ichor"));
+      if (t.veh.dashLeft !== undefined) stats.append(h('span', { class: 'stat' }, h('b', { text: String(t.veh.dashLeft) }), 'Foncer'));
     }
     kids.push(stats);
     kids.push(h('div', { class: 'hpbar ' + (pct < 25 ? 'crit' : pct < 50 ? 'low' : '') }, h('i', { style: { width: Math.max(0, pct) + '%' } })));
@@ -237,10 +238,10 @@
         const dt = dis ? "Ce n'est pas le tour du pilote" : '';
         const pAct = pil && pil.turn ? pil.turn.action : false, pBon = pil && pil.turn ? pil.turn.bonus : false;
         parts.push(h('div', { class: 'act-group' }, h('div', { class: 'act-label', text: 'Pilotage — ' + veh.name }),
-          mk('Pleins gaz', () => App.act({ a: 'dash', id: veh.id }), { disabled: dis || veh.veh.dashed || (combat && pAct && !gm), title: dt || 'Action : vitesse doublée' }),
-          mk(`Surrégime (${veh.veh.soulCoins !== undefined ? veh.veh.soulCoins : '?'})`, () => App.act({ a: 'overdrive', id: veh.id }), { disabled: dis || veh.veh.overdrive || (combat && pBon && !gm), title: dt || "Action bonus : brûle une pièce d'âme, +6 cases" }),
-          mk('Éperonner', () => App.startRam(veh), { cls: 'primary', disabled: dis, title: dt || 'Percuter un véhicule ou une créature au contact (3 cases d’élan minimum)' }),
-          (veh.veh.mishaps || []).some((m) => m.effect === 'noturn' || m.effect === 'ac') ? mk('Réparer', () => App.act({ a: 'repair', id: veh.id, who: (App.myCrew(veh)[0] || {}).id }), { title: 'Jet de Dextérité (outils) DD 12' }) : null));
+          mk(`Foncer (${veh.veh.dashLeft !== undefined ? veh.veh.dashLeft : '?'})`, () => App.act({ a: 'dash', id: veh.id }), { disabled: dis || veh.veh.dashed || (combat && pBon && !gm) || (veh.veh.dashLeft <= 0 && !gm), title: dt || 'Action bonus : vitesse doublée ce tour (limite : modificateur de Constitution par combat)' }),
+          mk(`Ichor (${veh.veh.soulCoins !== undefined ? veh.veh.soulCoins : '?'})`, () => App.act({ a: 'overdrive', id: veh.id }), { disabled: dis || veh.veh.overdrive || (combat && pBon && !gm), title: dt || "Action bonus : une fiole d'ichor dans la fournaise, +30 ft (6 cases)" }),
+          mk('Éperonner', () => App.startRam(veh), { cls: 'primary', disabled: dis, title: dt || "Percuter au contact : il faut avoir roulé ce tour (1d6 par 10 ft parcourus), ou écraser une créature (Roues broyeuses)" }),
+          (veh.veh.mishaps || []).map((m, i) => m.dc || m.effect === 'flip' ? mk('Réparer : ' + m.name, () => App.act({ a: 'repair', id: veh.id, mi: i, who: (App.myCrew(veh).find((q) => q.aboard && q.aboard.station !== 'helm') || App.myCrew(veh)[0] || {}).id }), { title: m.effect === 'flip' ? 'Seul le MJ peut redresser l\'engin' : `Action, jet de ${m.ability === 'str' ? 'Force' : 'Dextérité'} DD ${m.dc} (désavantage si l'engin roule). Quittez votre poste.` }) : null)));
       }
       // treuil
       if (sel.kind === 'creature' && sel.aboard) {
@@ -457,17 +458,19 @@
     p.append(h('p', { text: "Tout se joue dans l'ordre d'initiative. Le véhicule roule pendant le tour de son pilote ; chaque équipier attaque pendant son propre tour depuis son poste." }));
     p.append(h('h3', { text: 'Conduite des machines infernales' }));
     p.append(h('table', { class: 'rules', html: `
-      <tr><td>Roulage</td><td>Le pilote déplace l'engin jusqu'à sa vitesse. Il avance ou recule (coût ×2), jamais en crabe. Chaque 45° de virage coûte 1 case (au prorata).</td></tr>
-      <tr><td>Pleins gaz</td><td>Action du pilote : vitesse doublée ce tour.</td></tr>
-      <tr><td>Surrégime</td><td>Action bonus : une pièce d'âme dans le moteur, +6 cases.</td></tr>
-      <tr><td>Éperonner</td><td>Il faut avoir roulé au moins 3 cases ce tour. Contre un véhicule : jet du pilote contre la CA, 3d10 contondants, l'éperon encaisse la moitié. Contre une créature : Dex DD 15 (demi-dégâts, sinon renversée).</td></tr>
-      <tr><td>Seuil de dégâts</td><td>Un coup inférieur au seuil de l'engin ricoche sans effet.</td></tr>
-      <tr><td>Avarie</td><td>Un coup égal ou supérieur au seuil d'avarie déclenche un jet sur la table d'avaries (moteur noyé, direction bloquée, incendie, arme enrayée, secousse, plaque arrachée).</td></tr>
+      <tr><td>Conduire</td><td>Action du pilote : l'engin se déplace jusqu'à sa vitesse (100 ft = 20 cases) en suivant n'importe quel parcours. <i>Maison :</i> marche avant ou arrière (×2), jamais en crabe ; 45° de virage = 1 case.</td></tr>
+      <tr><td>Foncer</td><td>Action bonus du pilote : vitesse doublée. Au plus (mod. de Con = 4) fois par combat.</td></tr>
+      <tr><td>Ichor</td><td>Action bonus : une fiole d'ichor démoniaque dans la fournaise, +30 ft (6 cases).</td></tr>
+      <tr><td>Collision</td><td>Contre un véhicule ou une structure : 1d6 par 10 ft parcourus ce tour (max 20d6), subis par les deux engins s'ils atteignent leur seuil de dégâts. Les occupants font un jet de Force DD 15 (dégâts, ou moitié si réussi). L'engin s'immobilise.</td></tr>
+      <tr><td>Roues broyeuses</td><td>Rouler sur une créature de taille G ou moins : Dex DD 11 ou 4d10 contondants et à terre (8d10 si déjà à terre). Une fois par créature et par tour.</td></tr>
+      <tr><td>CA</td><td>19 en mouvement, 17 à l'arrêt. Immunités : feu, poison, psychique.</td></tr>
+      <tr><td>Seuil de dégâts</td><td>Un coup inférieur au seuil de l'engin (10) ricoche sans effet.</td></tr>
+      <tr><td>Avarie</td><td>Un coup égal ou supérieur au seuil d'avarie (20) déclenche un d20 : éruption du moteur, direction bloquée, fournaise fissurée, arme enrayée, fumée aveuglante, blindage arraché, essieu faussé, retournement. Réparation : action, jet de Force ou Dextérité (désavantage si l'engin roule).</td></tr>
       <tr><td>Harpon</td><td>Un harpon qui touche un véhicule le relie par un câble : on ne peut plus s'éloigner au-delà de sa longueur. Treuil : tire la cible de 2 cases. Trancher : attaque contre le câble (CA 14, 12 PV).</td></tr>
       <tr><td>Équipage</td><td>Les créatures à bord suivent l'engin. Pour changer de poste ou sauter sur un autre véhicule, déposez le jeton à l'endroit voulu.</td></tr>` }));
     if (gm) {
       p.append(h('h3', { html: 'Valeurs à vérifier <span class="badge-prov">provisoire</span>' }));
-      p.append(h('p', { class: 'muted', text: "Les statistiques des lycanthropes viennent du Manuel des Monstres (de mémoire). Les armes du véhicule, le seuil de dégâts (10), le seuil d'avarie (20), les dégâts d'éperonnage et la table d'avaries sont des valeurs maison, modifiables depuis la fiche de chaque jeton (bouton Fiche). Comparez avec le livre et corrigez-les." }));
+      p.append(h('p', { class: 'muted', text: "Les statistiques de la broyeuse (200 PV, CA 19, vitesse 100 ft, armes, seuils, collisions, d20 d'avaries) suivent l'appendice des machines infernales ; les DD de réparation de la table sont ma meilleure lecture d'un texte altéré. Maison : virages et marche arrière, câble de harpon, nombre de fioles d'ichor, Bile Sprayer absent. Les stats des lycanthropes viennent du Manuel des Monstres (de mémoire). Tout est modifiable depuis la fiche de chaque jeton." }));
     }
     return p;
   };

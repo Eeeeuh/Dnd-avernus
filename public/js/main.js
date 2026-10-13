@@ -86,7 +86,7 @@
     // jetons : positions affichées
     for (const t of Object.values(s.tokens)) {
       if (!App.disp[t.id]) App.disp[t.id] = { x: t.x, y: t.y, r: t.r, vx: 0, vy: 0, speed: 0, born: App.time };
-      if (t.kind === 'vehicle' && !App.anim[t.id]) App.anim[t.id] = { tread: 0, spin: Math.random(), jaw: 0, jawK: 0, swing: 0, swingV: 0, aimL: -1.05, aimR: 1.05, aimLt: null, aimRt: null, fireL: 0, fireR: 0, speed: 0, rpm: 0.1, lastStamp: null };
+      if (t.kind === 'vehicle' && !App.anim[t.id]) App.anim[t.id] = { tread: 0, spin: Math.random(), jaw: 0, jawK: 0, swing: 0, swingV: 0, aimL: t.model === 'tormentor' ? 0 : -1.05, aimR: 1.05, aimLt: null, aimRt: null, fireL: 0, fireR: 0, speed: 0, rpm: 0.1, lastStamp: null };
     }
     for (const id of Object.keys(App.disp)) if (!s.tokens[id]) { delete App.disp[id]; delete App.anim[id]; A.engineStop(id); }
     if (App.sel && !s.tokens[App.sel]) App.sel = null;
@@ -168,12 +168,16 @@
     App.mode = { type: 'ram', veh: veh.id };
     $('#stage').classList.add('aim'); UI.renderAttackBar(); UI.toast('Cliquez la cible à éperonner');
   };
+  App.startLash = function (veh) {
+    App.mode = { type: 'lash', veh: veh.id };
+    $('#stage').classList.add('aim'); UI.renderAttackBar(); UI.toast('Cliquez la créature ou le véhicule à lacérer');
+  };
   App.cancelMode = function () { App.mode = null; $('#stage').classList.remove('aim'); UI.renderAttackBar(); };
 
   // portée utile du mode actif, centrée sur l'attaquant
   function modeRange() {
     const m = App.mode; if (!m) return null;
-    if (m.type === 'ram') { const v = App.tok(m.veh); return v ? { from: App.disp[v.id], range: 1.2 + 0, tok: v } : null; }
+    if (m.type === 'ram' || m.type === 'lash') { const v = App.tok(m.veh); return v ? { from: App.disp[v.id], range: 1.2 + 0, tok: v } : null; }
     const a = App.tok(m.attacker); if (!a) return null;
     const range = m.spec.src === 'station' ? ((App.weapons[(App.vehicleOf(a).veh.stations.find((s) => s.id === a.aboard.station) || {}).weapon] || {}).range || 2) : (m.w.range || 1.6);
     return { from: App.disp[a.id], range, tok: a };
@@ -185,9 +189,9 @@
 
   function clickTarget(hit) {
     const m = App.mode; if (!m || !hit) return;
-    if (m.type === 'ram') {
+    if (m.type === 'ram' || m.type === 'lash') {
       if (hit.type !== 'token' || hit.id === m.veh) return;
-      App.act({ a: 'ram', id: m.veh, target: hit.id }); App.cancelMode(); return;
+      App.act({ a: m.type, id: m.veh, target: hit.id }); App.cancelMode(); return;
     }
     const target = hit.type === 'tether' ? 'tether:' + hit.id : hit.id;
     if (hit.type === 'token' && hit.id === m.attacker) return;
@@ -402,7 +406,7 @@
       case 'down': { const p = pos(f.id); if (p) { FX.text(p.x, p.y - 1, 'À TERRE', { color: '#ff8a7a', size: 30 }); FX.ring(p.x, p.y, 1.8, { c: [255, 70, 50] }); } sfx('down', p ? p.x : undefined); UI.flash('#7a0a10'); break; }
       case 'relentless': { const p = pos(f.id); if (p) { FX.text(p.x, p.y - 1, 'ACHARNEMENT', { color: '#ffd36b', size: 30 }); FX.ring(p.x, p.y, 2.2, { c: [255, 211, 107] }); } sfx('relentless', p ? p.x : undefined); break; }
       case 'destroy': {
-        FX.explosion(f.x, f.y, 2.2); sfx('destroy', f.x); UI.flash('#ff7a2a'); UI.banner('Épave', 'La broyeuse explose', '', 2000);
+        FX.explosion(f.x, f.y, 2.2); sfx('destroy', f.x); UI.flash('#ff7a2a'); UI.banner('Épave', 'La machine explose', '', 2000);
         break;
       }
       case 'bump': FX.impact(f.x, f.y, 0, { n: 14 }); sfx('bump', f.x); FX.shake(5); break;
@@ -417,6 +421,7 @@
         UI.toast(`⚙ Avarie : ${f.name} — ${f.text}`, 'err');
         break;
       }
+      case 'lash': { if (f.dmg > 0) { FX.spark(f.x, f.y, 18, { speed: 1.4 }); FX.text(f.x, f.y - 0.8, '−' + f.dmg, { color: '#ff6a4a', size: 30 }); FX.shake(3); } sfx('slash', f.x); break; }
       case 'tether': sfx('tetherHit'); break;
       case 'reel': { sfx('reel'); FX.shake(3); break; }
       case 'cut': FX.spark(f.x, f.y, 24, { speed: 1.3 }); FX.text(f.x, f.y - 0.6, 'CÂBLE TRANCHÉ', { color: '#e8dcc4', size: 28 }); sfx('cut', f.x); break;
@@ -450,7 +455,7 @@
 
   function vehicleBurst(id, gold) {
     const t = App.tok(id), d = App.disp[id]; if (!t || !d) return;
-    for (const s of [-1, 1]) { const p = R.toWorld(d, -1.9, s * 0.62); FX.fire(p.x, p.y, 14, { vx: Math.cos(d.r * R.RAD) * -3, vy: Math.sin(d.r * R.RAD) * -3, c: gold ? [200, 255, 240] : [255, 190, 70] }); FX.spark(p.x, p.y, 8, { dir: (d.r + 180) * R.RAD, spread: 0.5 }); }
+    for (const s of [-1, 1]) { const p = R.toWorld(d, -(t.len / 2 + 0.1), s * (t.model === 'tormentor' ? 0.36 : 0.62)); FX.fire(p.x, p.y, 14, { vx: Math.cos(d.r * R.RAD) * -3, vy: Math.sin(d.r * R.RAD) * -3, c: gold ? [200, 255, 240] : [255, 190, 70] }); FX.spark(p.x, p.y, 8, { dir: (d.r + 180) * R.RAD, spread: 0.5 }); }
     FX.ring(d.x, d.y, 3.4, { c: gold ? [92, 242, 200] : [255, 160, 70], max: 0.6 });
   }
 
@@ -468,7 +473,7 @@
     const st = veh && att.aboard.station;
     if (an && st === 'chomper') an.jawK = 1;
     if (an && st === 'ball') { an.swingV += (st === 'ball' ? 14 : 0); }
-    if (an && (st === 'harpoonL' || st === 'harpoonR')) { const lp = R.toLocal(App.disp[veh.id], tp.x, tp.y); const la = Math.atan2(lp.ly - (st === 'harpoonL' ? -0.95 : 0.95), lp.lx + 1.45); if (st === 'harpoonL') { an.aimLt = la; an.fireL = App.time; } else { an.aimRt = la; an.fireR = App.time; } }
+    if (an && veh && /^harpoon/.test(st || '')) { const sd = veh.veh.stations.find((q) => q.id === st); const lp = R.toLocal(App.disp[veh.id], tp.x, tp.y); const la = Math.atan2(lp.ly - sd.ly, lp.lx - sd.lx); if (st === 'harpoonR') { an.aimRt = la; an.fireR = App.time; } else { an.aimLt = la; an.fireL = App.time; } }
     let delay = 0;
     const col = TYPE_COL[f.type] ? TYPE_COL[f.type] : '#ffffff';
     const land = () => impact(f, tp, ang, col);
@@ -568,7 +573,7 @@
       a.swingV += (-26 * (a.swing - target) - 3.2 * a.swingV) * dt; a.swing += a.swingV * dt;
       a.swing = clamp(a.swing, -1.5, 1.5);
       // tourelles de harpon : vers la cible ou position de repos
-      const restL = -1.05, restR = 1.05;
+      const restL = t.model === 'tormentor' ? 0 : -1.05, restR = 1.05;
       a.aimL = lerp(a.aimL, a.aimLt !== null ? a.aimLt : restL, 1 - Math.exp(-dt * 6));
       a.aimR = lerp(a.aimR, a.aimRt !== null ? a.aimRt : restR, 1 - Math.exp(-dt * 6));
       if (a.aimLt !== null && App.time - a.fireL > 1.2) a.aimLt = null;
@@ -580,12 +585,12 @@
 
       // fumée, poussière, feu
       if (!dead) {
-        if (Math.random() < dt * (14 + a.speed * 26)) for (const s of [-1, 1]) { const p = R.toWorld(d, -1.82, s * 0.62); FX.smoke(p.x, p.y, 1, { vx: -Math.cos(d.r * R.RAD) * 1.2, vy: -Math.sin(d.r * R.RAD) * 1.2, r0: 0.14, r1: 0.7, a: 0.25 + a.speed * 0.15, c: t.side === 'party' ? [62, 74, 76] : [60, 40, 32] }); if (Math.random() < 0.3 + a.speed * 0.3) FX.fire(p.x, p.y, 1, { r0: 0.14, vx: -Math.cos(d.r * R.RAD) * 2, vy: -Math.sin(d.r * R.RAD) * 2 }); }
-        if (a.speed > 0.25 && Math.random() < dt * 40 * a.speed) for (const s of [-1, 1]) { const p = R.toWorld(d, -1.9, s * 1.2); FX.dust(p.x, p.y, 1, { a: 0.18 + a.speed * 0.1 }); }
+        if (Math.random() < dt * (14 + a.speed * 26)) for (const s of [-1, 1]) { const p = R.toWorld(d, -(t.len / 2 - 0.1), s * (t.model === 'tormentor' ? 0.36 : 0.62)); FX.smoke(p.x, p.y, 1, { vx: -Math.cos(d.r * R.RAD) * 1.2, vy: -Math.sin(d.r * R.RAD) * 1.2, r0: 0.14, r1: 0.7, a: 0.25 + a.speed * 0.15, c: t.side === 'party' ? [62, 74, 76] : [60, 40, 32] }); if (Math.random() < 0.3 + a.speed * 0.3) FX.fire(p.x, p.y, 1, { r0: 0.14, vx: -Math.cos(d.r * R.RAD) * 2, vy: -Math.sin(d.r * R.RAD) * 2 }); }
+        if (a.speed > 0.25 && Math.random() < dt * 40 * a.speed) for (const s of [-1, 1]) { const p = R.toWorld(d, -(t.len / 2), s * (t.wid / 2 - 0.2)); FX.dust(p.x, p.y, 1, { a: 0.18 + a.speed * 0.1 }); }
         const hp = t.hp !== undefined ? t.hp / t.maxHp : (t.hpPct || 100) / 100;
-        if (hp < 0.5 && Math.random() < dt * (hp < 0.25 ? 30 : 12)) { const p = R.toWorld(d, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 1.6); FX.smoke(p.x, p.y, 1, { c: [20, 16, 14], a: 0.5, r1: 1.1 }); if (hp < 0.25 && Math.random() < 0.5) FX.fire(p.x, p.y, 1, { r0: 0.3 }); }
+        if (hp < 0.5 && Math.random() < dt * (hp < 0.25 ? 30 : 12)) { const p = R.toWorld(d, (Math.random() - 0.5) * t.len * 0.75, (Math.random() - 0.5) * t.wid * 0.55); FX.smoke(p.x, p.y, 1, { c: [20, 16, 14], a: 0.5, r1: 1.1 }); if (hp < 0.25 && Math.random() < 0.5) FX.fire(p.x, p.y, 1, { r0: 0.3 }); }
       } else if (Math.random() < dt * 22) {
-        const p = R.toWorld(d, (Math.random() - 0.5) * 3.4, (Math.random() - 0.5) * 2); FX.smoke(p.x, p.y, 1, { c: [18, 14, 12], a: 0.55, r1: 1.4, long: 1.5 }); if (Math.random() < 0.6) FX.fire(p.x, p.y, 1, { r0: 0.32 });
+        const p = R.toWorld(d, (Math.random() - 0.5) * t.len * 0.85, (Math.random() - 0.5) * t.wid * 0.7); FX.smoke(p.x, p.y, 1, { c: [18, 14, 12], a: 0.55, r1: 1.4, long: 1.5 }); if (Math.random() < 0.6) FX.fire(p.x, p.y, 1, { r0: 0.32 });
       }
       // moteur sonore
       updateEngine(t, d, a, dead);
@@ -606,9 +611,10 @@
     const ctx = tr.getContext('2d');
     const cur = { x: d.x, y: d.y, r: d.r };
     const prev = a.lastStamp || cur;
-    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(8,3,2,0.17)'; ctx.lineWidth = 0.46 * tp;
+    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(8,3,2,0.17)'; ctx.lineWidth = (t.model === 'tormentor' ? 0.5 : 0.46) * tp;
     for (const s of [-1, 1]) {
-      const p0 = R.toWorld(prev, 0, s * 1.21), p1 = R.toWorld(cur, 0, s * 1.21);
+      const off = t.model === 'tormentor' ? 1.0 : 1.21;
+      const p0 = R.toWorld(prev, 0, s * off), p1 = R.toWorld(cur, 0, s * off);
       ctx.beginPath(); ctx.moveTo(p0.x * tp, p0.y * tp); ctx.lineTo(p1.x * tp, p1.y * tp); ctx.stroke();
     }
     a.lastStamp = cur;
@@ -693,7 +699,8 @@
     for (const th of S.tethers) {
       const a = App.disp[th.from], b = App.disp[th.to], ta = App.tok(th.from), tb = App.tok(th.to); if (!a || !b || !ta || !tb) continue;
       // départ : extrémité du canon qui a tiré (la plus proche de la cible)
-      const cand = [R.toWorld(a, -1.45, -0.95), R.toWorld(a, -1.45, 0.95)];
+      const cand = ta.veh.stations.filter((q) => q.weapon === 'harpoon').map((q) => R.toWorld(a, q.lx, q.ly));
+      if (!cand.length) cand.push({ x: a.x, y: a.y });
       const from = cand.sort((p, q) => Math.hypot(p.x - b.x, p.y - b.y) - Math.hypot(q.x - b.x, q.y - b.y))[0];
       const to = { x: b.x, y: b.y };
       const dist = Math.hypot(to.x - from.x, to.y - from.y);
@@ -743,22 +750,23 @@
     ctx.translate(s[0], s[1]); ctx.rotate(d.r * R.RAD); ctx.scale(z, z);
     if (t.hidden) ctx.globalAlpha = 0.55;
     const hpPct = t.hp !== undefined ? t.hp / t.maxHp * 100 : (t.hpPct || 100);
-    Sprites.grinder(ctx, t, { t: App.time, tread: a.tread, spin: a.spin, jaw: a.jaw, swing: a.swing, aimL: a.aimL, aimR: a.aimR, fireL: a.fireL, fireR: a.fireR, speed: a.speed, destroyed: t.veh.destroyed, hpPct, id: t.id });
+    (t.model === 'tormentor' ? Sprites.tormentor : Sprites.grinder)(ctx, t, { t: App.time, tread: a.tread, spin: a.spin, jaw: a.jaw, swing: a.swing, aimL: a.aimL, aimR: a.aimR, fireL: a.fireL, fireR: a.fireR, speed: a.speed, destroyed: t.veh.destroyed, hpPct, id: t.id });
     // contour de sélection
-    const hull = [[-1.95, -1.0], [-1.95, 1.0], [1.15, 1.12], [1.82, 0.64], [1.82, -0.64], [1.15, -1.12]];
+    const HL = t.len / 2 + 0.12, HW = t.wid / 2 + 0.1;
+    const hull = [[-HL, -HW], [-HL, HW], [HL - 0.7, HW], [HL, HW - 0.55], [HL, -HW + 0.55], [HL - 0.7, -HW]];
     const hov = App.hover && App.hover.type === 'token' && App.hover.id === t.id;
     const targetable = App.mode && isTargetable(t);
     if (sel || active || hov || targetable) {
       ctx.lineWidth = 0.09; ctx.strokeStyle = targetable ? '#ff3b1e' : active ? '#ffb040' : sel ? '#ffffff' : 'rgba(255,255,255,0.45)';
       ctx.shadowColor = targetable ? '#ff3b1e' : active ? '#ff7a1f' : '#fff'; ctx.shadowBlur = 14;
       ctx.beginPath(); hull.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke();
-      if (targetable) { ctx.lineWidth = 0.05; ctx.setLineDash([0.3, 0.2]); ctx.beginPath(); ctx.ellipse(0, 0, 3.0, 2.2, 0, 0, 6.2832); ctx.stroke(); }
+      if (targetable) { ctx.lineWidth = 0.05; ctx.setLineDash([0.3, 0.2]); ctx.beginPath(); ctx.ellipse(0, 0, t.len / 2 + 1.1, t.wid / 2 + 0.8, 0, 0, 6.2832); ctx.stroke(); }
     }
     // poignée de rotation
     if (sel && App.canControl(t) && !App.mode && !t.veh.destroyed) {
       ctx.shadowBlur = 0; ctx.setLineDash([]);
       const hx = t.len / 2 + 1.35;
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.04; ctx.beginPath(); ctx.moveTo(1.9, 0); ctx.lineTo(hx - 0.28, 0); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.04; ctx.beginPath(); ctx.moveTo(t.len / 2 + 0.1, 0); ctx.lineTo(hx - 0.28, 0); ctx.stroke();
       ctx.fillStyle = 'rgba(14,8,8,0.85)'; ctx.strokeStyle = '#ffb040'; ctx.lineWidth = 0.07; ctx.beginPath(); ctx.arc(hx, 0, 0.3, 0, 6.2832); ctx.fill(); ctx.stroke();
       ctx.strokeStyle = '#ffb040'; ctx.lineWidth = 0.06; ctx.beginPath(); ctx.arc(hx, 0, 0.15, -2.4, 1.0); ctx.stroke();
     }
@@ -767,7 +775,7 @@
 
   function isTargetable(t) {
     const m = App.mode; if (!m) return false;
-    if (m.type === 'ram') { const v = App.tok(m.veh); return v && t.id !== v.id && R.gap(v, t) <= 1.2; }
+    if (m.type === 'ram' || m.type === 'lash') { const v = App.tok(m.veh); return v && t.id !== v.id && R.gap(v, t) <= 1.2; }
     const a = App.tok(m.attacker); if (!a || t.id === a.id) return false;
     if (t.dead) return false;
     const mr = modeRange(); if (!mr) return false;
@@ -800,12 +808,13 @@
       ctx.strokeStyle = `rgba(${col},0.7)`; ctx.lineWidth = 3; ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.moveTo(s0[0], s0[1]); ctx.lineTo(s[0], s[1]); ctx.stroke(); ctx.setLineDash([]);
       ctx.translate(s[0], s[1]); ctx.rotate(g.r * R.RAD); ctx.scale(z, z);
       ctx.globalAlpha = 0.5; ctx.fillStyle = `rgba(${col},0.18)`; ctx.strokeStyle = `rgba(${col},0.95)`; ctx.lineWidth = 0.08;
-      const hull = [[-1.95, -1.5], [-1.95, 1.5], [2.28, 1.5], [2.28, -1.5]];
+      const gl = t.len / 2 + 0.35, gw = t.wid / 2 + 0.2;
+      const hull = [[-gl, -gw], [-gl, gw], [gl, gw], [gl, -gw]];
       ctx.beginPath(); hull.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(2.9, 0); ctx.lineTo(2.4, -0.4); ctx.moveTo(2.9, 0); ctx.lineTo(2.4, 0.4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(gl + 0.6, 0); ctx.lineTo(gl + 0.1, -0.4); ctx.moveTo(gl + 0.6, 0); ctx.lineTo(gl + 0.1, 0.4); ctx.stroke();
       ctx.restore(); ctx.save();
       const txt = !dr.cost ? '' : (dr.cost.ok ? `${dr.cost.cost.toFixed(1)} / ${isFinite(rem) ? Math.max(rem, 0).toFixed(1) : '∞'}${dr.cost.dir === 'back' ? ' (marche arrière)' : ''}` : 'Pas de dérapage latéral');
-      label(s[0], s[1] - 3.3 * z, txt, ok ? '#7ff7d6' : '#ff8a7a', 20);
+      label(s[0], s[1] - (t.wid / 2 + 1.8) * z, txt, ok ? '#7ff7d6' : '#ff8a7a', 20);
     } else {
       const s = App.w2s(g.x, g.y), s0 = App.w2s(dr.start.x, dr.start.y);
       const dist = Math.hypot(g.x - dr.start.x, g.y - dr.start.y);
@@ -840,9 +849,9 @@
     for (const t of Object.values(S.tokens)) {
       if (t.kind === 'vehicle') {
         const d = App.disp[t.id]; if (!d) continue;
-        const s = App.w2s(d.x, d.y - 3.0);
+        const s = App.w2s(d.x, d.y - (t.wid / 2 + 1.5));
         // barre de PV
-        const w = 3.4 * z, h = Math.max(5, z * 0.2), x = s[0] - w / 2, y = s[1];
+        const w = (t.len - 0.6) * z, h = Math.max(5, z * 0.2), x = s[0] - w / 2, y = s[1];
         const pct = t.hp !== undefined ? t.hp / t.maxHp : (t.hpPct || 0) / 100;
         if (s[0] < -w || s[0] > App.size.w + w) continue;
         ctx.save(); ctx.globalAlpha = t.hidden ? 0.5 : 1;

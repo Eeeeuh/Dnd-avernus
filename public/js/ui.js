@@ -160,7 +160,8 @@
     if (t.kind === 'vehicle') {
       const b = App.vehicleBudget(t), left = Math.max(0, b - t.veh.movedTurn);
       stats.append(h('span', { class: 'stat' }, h('b', { text: left.toFixed(1).replace('.0', '') + '/' + b }), 'cases'));
-      if (t.veh.soulCoins !== undefined) stats.append(h('span', { class: 'stat soul' }, h('b', { text: String(t.veh.soulCoins) }), "fioles d'ichor"));
+      if (t.veh.ichor !== undefined) stats.append(h('span', { class: 'stat soul' }, h('b', { text: String(t.veh.ichor) }), "flasques d'ichor"));
+      if (t.veh.soulCoins) stats.append(h('span', { class: 'stat soul' }, h('b', { text: String(t.veh.soulCoins) }), "pièces d'âme"));
       if (t.veh.dashLeft !== undefined) stats.append(h('span', { class: 'stat' }, h('b', { text: String(t.veh.dashLeft) }), 'Foncer'));
     }
     kids.push(stats);
@@ -218,7 +219,7 @@
         if (veh && sel.aboard.station) {
           const st = veh.veh.stations.find((x) => x.id === sel.aboard.station);
           if (st && st.kind === 'weapon') {
-            const w = App.weapons[st.weapon] || {};
+            const w = Object.assign({}, App.weapons[st.weapon] || {}, (veh.veh.weapons || {})[st.weapon] || {});
             const jam = veh.veh.jam && veh.veh.jam.station === st.id;
             weps.unshift({ label: st.label, sub: `${sgn(w.toHit || 0)} · ${w.dmg || '?'}`, spec: { src: 'station' }, w, jam, station: true });
           }
@@ -239,8 +240,9 @@
         const pAct = pil && pil.turn ? pil.turn.action : false, pBon = pil && pil.turn ? pil.turn.bonus : false;
         parts.push(h('div', { class: 'act-group' }, h('div', { class: 'act-label', text: 'Pilotage — ' + veh.name }),
           mk(`Foncer (${veh.veh.dashLeft !== undefined ? veh.veh.dashLeft : '?'})`, () => App.act({ a: 'dash', id: veh.id }), { disabled: dis || veh.veh.dashed || (combat && pBon && !gm) || (veh.veh.dashLeft <= 0 && !gm), title: dt || 'Action bonus : vitesse doublée ce tour (limite : modificateur de Constitution par combat)' }),
-          mk(`Ichor (${veh.veh.soulCoins !== undefined ? veh.veh.soulCoins : '?'})`, () => App.act({ a: 'overdrive', id: veh.id }), { disabled: dis || veh.veh.overdrive || (combat && pBon && !gm), title: dt || "Action bonus : une fiole d'ichor dans la fournaise, +30 ft (6 cases)" }),
-          mk('Éperonner', () => App.startRam(veh), { cls: 'primary', disabled: dis, title: dt || "Percuter au contact : il faut avoir roulé ce tour (1d6 par 10 ft parcourus), ou écraser une créature (Roues broyeuses)" }),
+          mk(`Turbo ichor (${veh.veh.ichor !== undefined ? veh.veh.ichor : '?'})`, () => App.act({ a: 'overdrive', id: veh.id }), { disabled: dis || veh.veh.overdrive || (combat && pBon && !gm), title: dt || "Action bonus : une flasque d'ichor dans la chaudière, +9 m (6 cases) pendant 1 minute. d20 à chaque tour : un 1 = chaudière fissurée" }),
+          veh.lash ? mk('Faux balayantes', () => App.startLash(veh), { disabled: dis || veh.veh.lashUsed, title: dt || 'En arrivant au contact : 2d10+2 tranchants, Dex DD 13 pour esquiver' }) : null,
+          mk('Éperonner', () => App.startRam(veh), { cls: 'primary', disabled: dis, title: dt || "Percuter au contact : il faut avoir roulé ce tour (1d6 par 3 m parcourus), ou écraser une créature (Roues écrasantes)" }),
           (veh.veh.mishaps || []).map((m, i) => m.dc || m.effect === 'flip' ? mk('Réparer : ' + m.name, () => App.act({ a: 'repair', id: veh.id, mi: i, who: (App.myCrew(veh).find((q) => q.aboard && q.aboard.station !== 'helm') || App.myCrew(veh)[0] || {}).id }), { title: m.effect === 'flip' ? 'Seul le MJ peut redresser l\'engin' : `Action, jet de ${m.ability === 'str' ? 'Force' : 'Dextérité'} DD ${m.dc} (désavantage si l'engin roule). Quittez votre poste.` }) : null)));
       }
       // treuil
@@ -422,7 +424,7 @@
           !t.owner ? h('button', { class: 'btn small danger', text: '✕', title: 'Supprimer', onclick: () => { if (confirm('Supprimer ' + t.name + ' ?')) App.act({ a: 'gmRemove', id: t.id }); } }) : null)));
     }
     p.append(h('h3', { text: 'Ajouter' }));
-    p.append(h('div', { class: 'row' }, [['wereboar', 'Sanglier-garou'], ['wererat', 'Rat-garou'], ['grinder-enemy', 'Broyeuse ennemie'], ['grinder-party', 'Broyeuse alliée'], ['pc', 'PNJ allié']].map(([k, l]) => h('button', { class: 'btn small', text: l, onclick: () => App.act({ a: 'gmAdd', template: k, x: App.cam.x, y: App.cam.y }) }))));
+    p.append(h('div', { class: 'row' }, [['wereboar', 'Sanglier-garou'], ['wererat', 'Rat-garou'], ['grinder-enemy', 'Broyeur ennemi'], ['grinder-party', 'Broyeur allié'], ['tormentor-party', 'Tortionnaire allié'], ['tormentor-enemy', 'Tortionnaire ennemi'], ['pc', 'PNJ allié']].map(([k, l]) => h('button', { class: 'btn small', text: l, onclick: () => App.act({ a: 'gmAdd', template: k, x: App.cam.x, y: App.cam.y }) }))));
     // câbles
     if (S.tethers.length) { p.append(h('h3', { text: 'Câbles' }), h('button', { class: 'btn small danger', text: 'Retirer tous les câbles', onclick: () => App.act({ a: 'gmClearTethers' }) })); }
     // ambiance
@@ -458,19 +460,20 @@
     p.append(h('p', { text: "Tout se joue dans l'ordre d'initiative. Le véhicule roule pendant le tour de son pilote ; chaque équipier attaque pendant son propre tour depuis son poste." }));
     p.append(h('h3', { text: 'Conduite des machines infernales' }));
     p.append(h('table', { class: 'rules', html: `
-      <tr><td>Conduire</td><td>Action du pilote : l'engin se déplace jusqu'à sa vitesse (100 ft = 20 cases) en suivant n'importe quel parcours. <i>Maison :</i> marche avant ou arrière (×2), jamais en crabe ; 45° de virage = 1 case.</td></tr>
-      <tr><td>Foncer</td><td>Action bonus du pilote : vitesse doublée. Au plus (mod. de Con = 4) fois par combat.</td></tr>
-      <tr><td>Ichor</td><td>Action bonus : une fiole d'ichor démoniaque dans la fournaise, +30 ft (6 cases).</td></tr>
-      <tr><td>Collision</td><td>Contre un véhicule ou une structure : 1d6 par 10 ft parcourus ce tour (max 20d6), subis par les deux engins s'ils atteignent leur seuil de dégâts. Les occupants font un jet de Force DD 15 (dégâts, ou moitié si réussi). L'engin s'immobilise.</td></tr>
-      <tr><td>Roues broyeuses</td><td>Rouler sur une créature de taille G ou moins : Dex DD 11 ou 4d10 contondants et à terre (8d10 si déjà à terre). Une fois par créature et par tour.</td></tr>
-      <tr><td>CA</td><td>19 en mouvement, 17 à l'arrêt. Immunités : feu, poison, psychique.</td></tr>
-      <tr><td>Seuil de dégâts</td><td>Un coup inférieur au seuil de l'engin (10) ricoche sans effet.</td></tr>
-      <tr><td>Avarie</td><td>Un coup égal ou supérieur au seuil d'avarie (20) déclenche un d20 : éruption du moteur, direction bloquée, fournaise fissurée, arme enrayée, fumée aveuglante, blindage arraché, essieu faussé, retournement. Réparation : action, jet de Force ou Dextérité (désavantage si l'engin roule).</td></tr>
+      <tr><td>Conduire</td><td>Action du pilote : l'engin se déplace jusqu'à sa vitesse (30 m = 20 cases), en suivant n'importe quel parcours. <i>Maison :</i> marche avant ou arrière (×2), jamais en crabe ; 45° de virage = 1 case.</td></tr>
+      <tr><td>Foncer</td><td>Action bonus du pilote (moteur allumé) : vitesse doublée ce tour. Limité au modificateur de Constitution (Tortionnaire +2, Broyeur +4) — à confirmer avec les règles de poursuite.</td></tr>
+      <tr><td>Turbo à ichor</td><td>Action bonus : une flasque d'ichor de démon dans la chaudière, +9 m (6 cases) pendant 1 minute. Au début de chaque tour du conducteur, d20 : sur 1, incident « Chaudière fissurée ».</td></tr>
+      <tr><td>Collision</td><td>Contre un véhicule ou une structure : l'engin s'arrête net, 1d6 par 3 m parcourus depuis son dernier tour (max 20d6), pour lui et la cible, sauf sous leur seuil de dégâts. Les occupants font Force DD 15 (dégâts, ou moitié si réussi), que l'engin ait encaissé ou non.</td></tr>
+      <tr><td>Roues écrasantes</td><td>Broyeur : traverse une créature de taille Grande ou moins, Dex DD 11 ou 4d10 contondants et à terre. Tortionnaire : taille Moyenne ou moins, Dex DD 13 ou 2d10. Déjà à terre : dégâts doublés. Une fois par créature et par tour.</td></tr>
+      <tr><td>Faux balayantes</td><td>Tortionnaire, une fois par tour en arrivant au contact d'une créature debout ou d'un véhicule : 2d10+2 tranchants, Dex DD 13 pour s'éloigner.</td></tr>
+      <tr><td>CA</td><td>Valeur en mouvement ; valeur « à l'arrêt » plus basse (Tortionnaire 21 / 19) ; attaques avantagées contre un véhicule à l'arrêt. Abri des postes : +5 au pilote, +2 aux armes. Immunités : feu, poison, psychique.</td></tr>
+      <tr><td>Seuil de dégâts</td><td>Un coup inférieur au seuil de l'engin (10) ne fait rien.</td></tr>
+      <tr><td>Incident</td><td>Engin en mouvement touché pour 20 ou plus d'un coup : d20 sur la table des incidents (flammes, volant bloqué, chaudière fissurée, arme défaillante, fumée, armure affaiblie, essieu, renversement). Réparer : une action, Force ou Dextérité selon l'incident, désavantage si l'engin roule ; hors poste de pilotage et d'arme.</td></tr>
       <tr><td>Harpon</td><td>Un harpon qui touche un véhicule le relie par un câble : on ne peut plus s'éloigner au-delà de sa longueur. Treuil : tire la cible de 2 cases. Trancher : attaque contre le câble (CA 14, 12 PV).</td></tr>
       <tr><td>Équipage</td><td>Les créatures à bord suivent l'engin. Pour changer de poste ou sauter sur un autre véhicule, déposez le jeton à l'endroit voulu.</td></tr>` }));
     if (gm) {
       p.append(h('h3', { html: 'Valeurs à vérifier <span class="badge-prov">provisoire</span>' }));
-      p.append(h('p', { class: 'muted', text: "Les statistiques de la broyeuse (200 PV, CA 19, vitesse 100 ft, armes, seuils, collisions, d20 d'avaries) suivent l'appendice des machines infernales ; les DD de réparation de la table sont ma meilleure lecture d'un texte altéré. Maison : virages et marche arrière, câble de harpon, nombre de fioles d'ichor, Bile Sprayer absent. Les stats des lycanthropes viennent du Manuel des Monstres (de mémoire). Tout est modifiable depuis la fiche de chaque jeton." }));
+      p.append(h('p', { class: 'muted', text: "Les profils du Tortionnaire et du Broyeur de démons, la table des incidents, les collisions et les réparations viennent de l'annexe B (p. 216-221) ; Raggadragga (120 PV) et son équipage de la page 87. Maison : virages et marche arrière, câble du harpon, nombre de flasques d'ichor des PJ (1 par défaut), limite de « Foncer ». Les profils de base du sanglier-garou et du rat-garou viennent de mon souvenir du Manuel des Monstres. Tout est modifiable depuis la fiche de chaque jeton." }));
     }
     return p;
   };
@@ -513,7 +516,7 @@
       if (t.kind === 'vehicle' && t.veh) {
         const vi = {};
         const vf = (k, l) => { const i = h('input', { class: 'inp', type: 'number', value: t.veh[k] }); vi[k] = i; return h('label', null, l, i); };
-        body.push(h('div', { class: 'form', style: { marginTop: '12px' } }, vf('dmgThreshold', 'Seuil de dégâts'), vf('mishapThreshold', "Seuil d'avarie"), vf('soulCoins', "Pièces d'âme"), vf('pilotBonus', 'Bonus du pilote')));
+        body.push(h('div', { class: 'form', style: { marginTop: '12px' } }, vf('dmgThreshold', 'Seuil de dégâts'), vf('mishapThreshold', "Seuil d'avarie"), vf('soulCoins', "Pièces d'âme"), vf('ichor', "Flasques d'ichor")));
         extra._veh = vi;
         body.push(h('p', { class: 'muted', text: 'Vitesse, taille et équipage : modifiez la vitesse ci-dessus ; déposez un jeton sur un siège pour l\'y installer.' }));
       }

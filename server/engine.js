@@ -98,7 +98,13 @@ class Game {
   }
   sysLog(text, kind = 'sys') { this.log({ kind, text }); }
   nameOf(t) { return t ? t.name : '?'; }
-  targetAC(t) { return t.kind === 'vehicle' && !(t.veh.movedTurn > 0) ? t.ac - 2 : t.ac; } // CA 17 à l'arrêt, 19 en mouvement
+  // CA du livre : valeur en mouvement, valeur « à l'arrêt » (profils), abri des postes (+5 important, +2 partiel).
+  targetAC(t) {
+    if (t.kind === 'vehicle') return t.veh.movedTurn > 0 ? t.ac : (t.acStopped !== undefined ? t.acStopped : t.ac);
+    const v = this.vehicleOf(t);
+    if (v && t.aboard.station) { const st = v.veh.stations.find((x) => x.id === t.aboard.station); if (st && st.cover) return t.ac + st.cover; }
+    return t.ac;
+  }
 
   /* ---------- vue filtrée pour un client ---------- */
   viewFor(c) {
@@ -114,7 +120,7 @@ class Game {
         delete copy.hp; delete copy.maxHp; delete copy.ac; delete copy.attacks; delete copy.sheet; delete copy.notes;
         delete copy.initMod; delete copy.dexSave; delete copy.immuneNonMagical; delete copy.relentless; delete copy.relentlessUsed;
         if (copy.veh) {
-          delete copy.veh.dmgThreshold; delete copy.veh.mishapThreshold; delete copy.veh.pilotBonus; delete copy.veh.soulCoins; delete copy.veh.dashLeft; delete copy.immune;
+          delete copy.veh.dmgThreshold; delete copy.veh.mishapThreshold; delete copy.veh.pilotBonus; delete copy.veh.soulCoins; delete copy.veh.dashLeft; delete copy.veh.ichor; delete copy.immune;
         }
       }
       tokens[t.id] = copy;
@@ -210,8 +216,14 @@ class Game {
     t.turn = { moved: 0, attacks: 0, action: false, bonus: false, reaction: false };
     const v = this.vehicleOf(t);
     if (v && t.aboard.station === 'helm') {
-      v.veh.movedTurn = 0; v.veh.distTurn = 0; v.veh.dashed = false; v.veh.overdrive = false; v.veh.ramUsed = false; v.veh.driving = false; v.veh.stopped = false; v.veh.crushed = [];
-      v.veh.mishaps = v.veh.mishaps.filter((m) => { if (m.ttl === undefined) return true; m.ttl -= 1; return m.ttl > 0; });
+      v.veh.movedTurn = 0; v.veh.distTurn = 0; v.veh.dashed = false; v.veh.ramUsed = false; v.veh.driving = false; v.veh.stopped = false; v.veh.crushed = []; v.veh.lashUsed = false;
+      // turbo à ichor : un d20 au début de chaque tour du conducteur, sur 1 → Chaudière fissurée
+      if (v.veh.turboLeft > 0) {
+        v.veh.turboLeft -= 1;
+        const d = Dice.die(20);
+        if (d === 1) { this.sysLog(`⚙ Turbo à ichor : d20 = 1 sur le tour de ${t.name} !`, 'warn'); this.forceMishap(v, 3); }
+        if (v.veh.turboLeft <= 0) { v.veh.overdrive = false; this.sysLog(`Le turbo à ichor de ${v.name} s'éteint.`); }
+      }
       
     }
     // Éruption du moteur : dégâts de feu à qui commence son tour à bord
@@ -412,13 +424,17 @@ class Game {
   strike(att, w, target, o) {
     // o : { adv, mag }
     const isTether = !!target.tether;
-    const d = Dice.d20(o.adv || 'none');
+    let advMode = o.adv || 'none';
+    // véhicule à l'arrêt : jets d'attaque avantagés (annexe B, Classe d'armure)
+    const stopped = !isTether && target.kind === 'vehicle' && !(target.veh.movedTurn > 0);
+    if (stopped && advMode !== 'dis') advMode = 'adv';
+    const d = Dice.d20(advMode);
     const nat = d.kept;
     const crit = nat === 20, fumble = nat === 1;
     const total = nat + (Number(w.toHit) || 0);
     const ac = isTether ? TETHER_AC : this.targetAC(target);
     const hit = crit || (!fumble && total >= ac);
-    const res = { hit, crit, fumble, nat, rolls: d.rolls, total, ac, dmgRaw: 0, applied: 0, immune: false, ricochet: false, type: w.type, mishap: null };
+    const res = { stopped, hit, crit, fumble, nat, rolls: d.rolls, total, ac, dmgRaw: 0, applied: 0, immune: false, ricochet: false, type: w.type, mishap: null };
     if (!hit) return res;
     const dmg = Dice.roll(w.dmg, { crit });
     res.dmgRaw = dmg.total; res.dmgText = dmg.text;
@@ -441,10 +457,19 @@ class Game {
         target.hp = Math.max(0, target.hp - dealt);
       } else {
         this.damageToken(target, dealt, w.type, res);
-        if (target.kind === 'vehicle' && !target.veh.destroyed && dealt >= target.veh.mishapThreshold) res.mishap = this.rollMishap(target);
+        if (target.kind === 'vehicle' && !target.veh.destroyed && dealt >= target.veh.mishapThreshold && target.veh.movedTurn > 0) res.mishap = this.rollMishap(target);
+        // Masticateur : cible réduite à 0 PV = broyée
+        if (w.grind && target.kind === 'creature' && target.hp <= 0) this.grind(target);
       }
     }
     return res;
+  }
+  grind(t) {
+    t.dead = true; t.hp = 0;
+    if (t.aboard) t.aboard.station = null;
+    this.s.order = this.s.order.filter((id) => id !== t.id);
+    this.pushFx({ k: 'death', id: t.id, x: t.x, y: t.y });
+    this.sysLog(`⚙ ${t.name} est broyé et recraché par les tuyaux d'évacuation.`, 'hit');
   }
   do_attack(c, a) {
     const att = this.tok(a.id);
@@ -610,11 +635,12 @@ class Game {
       this.pushFx({ k: 'suggest', beat: 'defeat', msg: 'Tous les aventuriers sont à terre : séquence de capture ?' });
     }
   }
-  rollMishap(v) {
-    const d = Dice.die(20);
+  rollMishap(v) { return this.applyMishap(v, Dice.die(20)); }
+  forceMishap(v, id) { const m = Enc.MISHAPS.find((x) => x.id === id); return this.applyMishap(v, m.min); }
+  applyMishap(v, d) {
     const m = Enc.MISHAPS.find((x) => d >= x.min && d <= x.max);
     this.pushFx({ k: 'mishap', id: v.id, name: m.name, text: m.text, x: v.x, y: v.y });
-    this.sysLog(`⚙ AVARIE (d20 = ${d}) : ${m.name}. ${m.text}`, 'warn');
+    this.sysLog(`⚙ INCIDENT (d20 = ${d}) : ${m.name}. ${m.text}`, 'warn');
     const crew = this.crewOf(v.id).filter((c) => !c.dead);
     const entry = { id: m.id, name: m.name, effect: m.effect, dc: m.dc, ability: m.ability };
     if (m.effect === 'armor') { const cut = Math.min(10, v.veh.dmgThreshold); v.veh.dmgThreshold -= cut; entry.restore = cut; }
@@ -696,15 +722,15 @@ class Game {
     if (!v || v.kind !== 'vehicle') return { err: 'Véhicule invalide.' };
     const n = this.needPilotTurn(c, v); if (n.err) return n;
     const gm = c.role === 'gm' && !c.ai;
-    if (v.veh.overdrive) return { err: 'Surrégime déjà actif.' };
-    if (!gm && v.veh.soulCoins <= 0) return { err: "Plus de fiole d'ichor démoniaque." };
+    if (v.veh.overdrive) return { err: 'Le turbo à ichor est déjà actif.' };
+    if (!gm && v.veh.ichor <= 0) return { err: "Plus de flasque d'ichor de démon." };
     if (this.s.phase === 'combat' && n.pilot.turn.bonus && !gm) return { err: 'Action bonus déjà utilisée ce tour.' };
-    v.veh.soulCoins = Math.max(0, v.veh.soulCoins - 1); v.veh.overdrive = true;
+    v.veh.ichor = Math.max(0, v.veh.ichor - 1); v.veh.overdrive = true; v.veh.turboLeft = 10;
     if (this.s.phase === 'combat') n.pilot.turn.bonus = true;
     this.pushFx({ k: 'overdrive', id: v.id });
-    this.sysLog(`${n.pilot.name} verse une fiole d'ichor dans la fournaise : +30 ft (6 cases) de vitesse.`);
+    this.sysLog(`${n.pilot.name} verse une flasque d'ichor de démon dans la chaudière : +9 m (6 cases) pendant 1 minute. d20 au début de chaque tour du conducteur : un 1 déclenche « Chaudière fissurée ».`);
   }
-  // Dégâts d'écrasement aux occupants d'un véhicule : Force DD 15, dégâts ou moitié (seulement si l'engin a vraiment encaissé).
+  // Collision : chaque créature à bord fait Force DD 15 (dégâts, ou moitié si réussi), que l'engin ait encaissé ou non.
   crashCrew(veh, dmg) {
     for (const c of this.crewOf(veh.id).filter((q) => !q.dead)) {
       const sv = Dice.d20().kept + (c.strSave || 0);
@@ -713,7 +739,11 @@ class Game {
       if (taken) this.damageToken(c, taken, 'contondant', {});
     }
   }
-  // Éperonner : collision (véhicule) ou Roues broyeuses (créature).
+  inMotionMishap(veh, dmg) {
+    if (veh.veh.destroyed || dmg < veh.veh.mishapThreshold || !(veh.veh.movedTurn > 0)) return '';
+    const mm = this.rollMishap(veh); return ` Incident de ${veh.name} : ${mm.name}.`;
+  }
+  // Éperonner : collision (véhicule, structure ou créature trop grande) ou Roues écrasantes (créature assez petite).
   do_ram(c, a) {
     const v = this.tok(a.id);
     const target = this.tok(a.target);
@@ -723,49 +753,80 @@ class Game {
     const gm = c.role === 'gm' && !c.ai;
     const combat = this.s.phase === 'combat';
     if (v.veh.flipped && !gm) return { err: "L'engin est retourné." };
-    if (!gm && combat && !(v.veh.distTurn > 0)) return { err: "Il faut avoir roulé ce tour : l'élan fait les dégâts (1d6 par 10 ft parcourus)." };
+    if (!gm && combat && !(v.veh.distTurn > 0)) return { err: "Il faut avoir roulé ce tour : l'élan fait les dégâts (1d6 par 3 m parcourus)." };
     const gap = R.gap(v, target);
     if (!gm && gap > 1.2) return { err: `Trop loin pour éperonner (${gap.toFixed(1)} cases).` };
+    const dice = Math.max(1, Math.min(20, Math.floor((v.veh.distTurn * 5) / 10)));
     let dealt = 0, hit = true, text = '';
+    const collide = (dmg) => {
+      v.veh.ramUsed = true; v.veh.stopped = true;
+      if (dmg >= v.veh.dmgThreshold) { this.damageToken(v, dmg, 'contondant', {}); text += this.inMotionMishap(v, dmg); }
+      this.crashCrew(v, dmg);
+    };
     if (target.kind === 'vehicle') {
       if (!gm && v.veh.ramUsed) return { err: "L'engin s'est déjà immobilisé dans une collision ce tour." };
-      const dice = Math.max(1, Math.min(20, Math.floor((v.veh.distTurn * 5) / 10)));
-      const dm = Dice.roll(`${dice}d6`);
-      const dmg = dm.total;
-      const hurt = (veh) => dmg >= veh.veh.dmgThreshold;
-      let tdone = 0, mtxt = '';
-      if (hurt(target)) {
-        this.damageToken(target, dmg, 'contondant', {}); tdone = dmg;
-        if (!target.veh.destroyed && dmg >= target.veh.mishapThreshold) { const mm = this.rollMishap(target); mtxt += ` Avarie de ${target.name} : ${mm.name}.`; }
-        this.crashCrew(target, dmg);
-      }
-      if (hurt(v)) {
-        this.damageToken(v, dmg, 'contondant', {});
-        if (!v.veh.destroyed && dmg >= v.veh.mishapThreshold) { const mm = this.rollMishap(v); mtxt += ` Avarie de ${v.name} : ${mm.name}.`; }
-        this.crashCrew(v, dmg);
-      }
-      v.veh.ramUsed = true; v.veh.stopped = true;
+      const dm = Dice.roll(`${dice}d6`); const dmg = dm.total;
+      let tdone = 0, tt = '';
+      if (dmg >= target.veh.dmgThreshold) { this.damageToken(target, dmg, 'contondant', {}); tdone = dmg; tt = this.inMotionMishap(target, dmg); }
       dealt = tdone;
-      text = `${dice}d6 (${dm.text}) = ${dmg} contondants pour chacun ; ${hurt(target) ? target.name + ' encaisse' : 'trop faible pour ' + target.name + ' (seuil ' + target.veh.dmgThreshold + ')'}, ${hurt(v) ? v.name + ' encaisse aussi' : v.name + ' ne subit rien'}. L'engin s'immobilise.${mtxt}`;
+      text = `${dice}d6 (${dm.text}) = ${dmg} contondants pour chacun. ${target.name} ${tdone ? 'encaisse' : 'ne subit rien (sous le seuil de ' + target.veh.dmgThreshold + ')'}${tt}.`;
+      collide(dmg);
+      text += ` ${v.name} ${dmg >= v.veh.dmgThreshold ? 'encaisse aussi' : 'ne subit rien'} et s'immobilise.`;
     } else {
-      // Roues broyeuses : Dex DD 11 ou 4d10 contondants et à terre (double si déjà à terre), une fois par créature et par tour
-      if (!gm && v.veh.crushed.includes(target.id)) return { err: 'Cette créature a déjà été écrasée ce tour.' };
-      const d = Dice.d20();
-      const sv = d.kept + (target.dexSave || 0);
-      v.veh.crushed.push(target.id);
-      if (sv >= 11) { hit = false; text = `${target.name} se jette de côté (Dex ${sv} contre DD 11).`; }
-      else {
-        const prone = target.conditions.includes('à terre');
-        const dm = Dice.roll(prone ? '8d10' : '4d10').total;
-        dealt = dm;
-        const immune = target.immuneNonMagical && !prone && false;
-        this.damageToken(target, dealt, 'contondant', {});
-        if (!target.conditions.includes('à terre')) target.conditions.push('à terre');
-        text = `${target.name} est écrasé (Dex ${sv} contre DD 11) : ${dealt} contondants${prone ? ' (déjà à terre : dégâts doublés)' : ', renversé'}.${immune ? '' : ''}`;
+      const crush = v.crush;
+      const small = crush && (target.size || 1) <= crush.maxSize;
+      if (small) {
+        // Roues écrasantes
+        if (!gm && v.veh.crushed.includes(target.id)) return { err: 'Cette créature a déjà été écrasée ce tour.' };
+        const d = Dice.d20();
+        const sv = d.kept + (target.dexSave || 0);
+        v.veh.crushed.push(target.id);
+        if (sv >= crush.dc) { hit = false; text = `${crush.label} : ${target.name} se jette de côté (Dex ${sv} contre DD ${crush.dc}).`; }
+        else {
+          const prone = target.conditions.includes('à terre');
+          const dm = Dice.roll(crush.dice).total + (prone ? Dice.roll(crush.dice).total : 0);
+          dealt = dm;
+          this.damageToken(target, dealt, 'contondant', {});
+          if (!target.dead && !target.conditions.includes('à terre')) target.conditions.push('à terre');
+          text = `${crush.label} : ${target.name} est écrasé (Dex ${sv} contre DD ${crush.dc}) — ${dealt} contondants${prone ? ' (déjà à terre : doublé)' : ', jeté à terre'}.`;
+        }
+      } else {
+        // collision avec une grande créature : Dex DD 10 (réaction) ou 1d6 par 3 m, l'engin s'arrête
+        const sv = Dice.d20().kept + (target.dexSave || 0);
+        if (sv >= 10) { hit = false; text = `${target.name} évite l'engin (Dex ${sv} contre DD 10).`; }
+        else { const dm = Dice.roll(`${dice}d6`); dealt = dm.total; this.damageToken(target, dealt, 'contondant', {}); text = `${target.name} est percuté (Dex ${sv} contre DD 10) — ${dealt} contondants.`; }
+        collide(dealt || Dice.roll(`${dice}d6`).total);
       }
     }
     this.pushFx({ k: 'ram', id: v.id, to: target.id, hit, dmg: dealt, fx: v.x, fy: v.y, tx: target.x, ty: target.y });
     this.sysLog(`🐗 ${v.name} percute ${target.name} : ${text}`, hit ? 'hit' : 'attack');
+    this.afterDamage();
+  }
+  // Faux balayantes (Tortionnaire) : en arrivant au contact d'une créature debout ou d'un autre véhicule.
+  do_lash(c, a) {
+    const v = this.tok(a.id);
+    const target = this.tok(a.target);
+    if (!v || v.kind !== 'vehicle' || !v.lash) return { err: "Cet engin n'a pas de faux balayantes." };
+    if (!target || target.id === v.id || target.aboard) return { err: 'Cible invalide.' };
+    const n = this.needPilotTurn(c, v); if (n.err) return n;
+    const gm = c.role === 'gm' && !c.ai;
+    if (!gm && v.veh.lashUsed) return { err: 'Faux balayantes déjà utilisées ce tour.' };
+    if (!gm && this.s.phase === 'combat' && !(v.veh.distTurn > 0)) return { err: "Il faut être arrivé au contact en roulant ce tour." };
+    if (!gm && R.gap(v, target) > 1.2) return { err: 'Trop loin (1,50 m maximum).' };
+    if (target.kind === 'creature' && target.conditions.includes('à terre') && !gm) return { err: 'La cible est à terre.' };
+    v.veh.lashUsed = true;
+    let sv;
+    if (target.kind === 'vehicle') { const p = this.pilotOf(target); sv = p ? Dice.d20().kept + (p.dexSave || 0) : -99; }
+    else sv = Dice.d20().kept + (target.dexSave || 0);
+    let text;
+    if (sv >= v.lash.dc) text = `${target.name} s'éloigne (Dex ${sv} contre DD ${v.lash.dc}).`;
+    else {
+      const dm = Dice.roll(v.lash.dmg).total;
+      if (target.kind === 'vehicle' && dm < target.veh.dmgThreshold) text = `les lames ricochent sur ${target.name} (${dm} < seuil ${target.veh.dmgThreshold}).`;
+      else { this.damageToken(target, dm, 'tranchant', {}); this.pushFx({ k: 'lash', id: v.id, to: target.id, x: target.x, y: target.y, dmg: dm }); text = `${target.name} est lacéré (Dex ${sv} contre DD ${v.lash.dc}) — ${dm} tranchants.`; }
+    }
+    this.pushFx({ k: 'lash', id: v.id, to: target.id, x: target.x, y: target.y, dmg: 0 });
+    this.sysLog(`🗡 ${v.lash.label} de ${v.name} : ${text}`, 'hit');
     this.afterDamage();
   }
   do_reel(c, a) {
@@ -817,7 +878,7 @@ class Game {
     t.hp = Math.min(Math.max(t.hp, 0), t.maxHp);
     if (t.kind === 'vehicle') this.syncCrew(t);
     if (gm && p.veh && t.veh) {
-      for (const k of ['dmgThreshold', 'mishapThreshold', 'soulCoins', 'pilotBonus']) if (p.veh[k] !== undefined && Number.isFinite(Number(p.veh[k]))) t.veh[k] = Number(p.veh[k]);
+      for (const k of ['dmgThreshold', 'mishapThreshold', 'soulCoins', 'ichor', 'pilotBonus']) if (p.veh[k] !== undefined && Number.isFinite(Number(p.veh[k]))) t.veh[k] = Number(p.veh[k]);
     }
     if (gm && p.hidden !== undefined) this.hideCrew(t);
   }
@@ -870,8 +931,10 @@ class Game {
     switch (a.template) {
       case 'wereboar': t = Enc.mkWereboar(id, 'Sanglier-garou'); break;
       case 'wererat': t = Enc.mkWererat(id, 'Rat-garou'); break;
-      case 'grinder-enemy': t = Enc.mkGrinder(id, 'Broyeuse ennemie', 'enemy'); break;
-      case 'grinder-party': t = Enc.mkGrinder(id, 'Broyeuse alliée', 'party'); break;
+      case 'grinder-enemy': t = Enc.mkGrinder(id, 'Broyeur de démons ennemi', 'enemy'); break;
+      case 'grinder-party': t = Enc.mkGrinder(id, 'Broyeur de démons allié', 'party'); break;
+      case 'tormentor-party': t = Enc.mkTormentor(id, 'Tortionnaire allié', 'party'); break;
+      case 'tormentor-enemy': t = Enc.mkTormentor(id, 'Tortionnaire ennemi', 'enemy'); break;
       case 'pc': t = Object.assign(Enc.mkPc(0), { id, owner: null, name: 'PNJ allié', color: '#e8dcc4' }); break;
       default: return { err: 'Modèle inconnu.' };
     }

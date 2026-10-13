@@ -9,22 +9,22 @@
  */
 
 const WEAPONS = {
-  // Valeurs du Demon Grinder (Descent into Avernus, appendice « machines de guerre infernales »). 1 case = 5 ft.
-  chomper: { name: 'Mâchoire broyeuse (Chomper)', range: 1, toHit: 9, dmg: '6d6+4', type: 'perforant', melee: true, mag: 'magic', grind: true, note: "Cible à 0 PV : broyée et expulsée par les tuyaux latéraux." },
-  wrecking: { name: 'Boulet de démolition', range: 3, toHit: 9, dmg: '8d8+4', type: 'contondant', melee: true, mag: 'magic', vsObject: true, note: 'Allonge 15 ft. Dégâts doublés contre objets et structures (véhicules compris, interprétation).' },
-  harpoon: { name: 'Lance-harpon', range: 24, toHit: 5, dmg: '2d8', type: 'perforant', tether: true, mag: 'magic', provisional: true, note: "Portée 120 ft. Le câble qui relie les véhicules est une règle maison (provisoire)." },
+  // Valeurs du livre : Descente en Averne, annexe B (p. 218-219). 1 case = 1,50 m = 5 ft.
+  chomper: { name: 'Masticateur', range: 1, toHit: 9, dmg: '6d6+4', type: 'perforant', melee: true, mag: 'magic', grind: true, note: "Cible réduite à 0 PV : broyée et recrachée par les tuyaux d'évacuation. Objets non magiques détruits." },
+  wrecking: { name: 'Boulet de démolition', range: 3, toHit: 9, dmg: '8d8+4', type: 'contondant', melee: true, mag: 'magic', vsObject: true, note: 'Allonge 4,50 m. Dégâts doublés contre un objet ou une structure (véhicules compris : interprétation).' },
+  harpoon: { name: 'Lance-harpons', range: 24, toHit: 5, dmg: '2d8', type: 'perforant', tether: true, mag: 'magic', note: "Portée 36 m (24 cases), 10 harpons. Le câble qui relie les véhicules est une règle maison (provisoire)." },
 };
 
-// Tableau d'avaries d20 du livre. Les DD de réparation sont ma meilleure lecture d'un texte altéré : à vérifier.
+// Table des incidents d20 (annexe B, p. 220). DD de réparation du livre.
 const MISHAPS = [
-  { id: 1, min: 1, max: 1, name: 'Éruption du moteur', text: "Le feu envahit l'engin : toute créature qui commence son tour à bord subit 3d6 dégâts de feu jusqu'à réparation.", effect: 'flare', dc: 15, ability: 'dex' },
-  { id: 2, min: 2, max: 4, name: 'Direction bloquée', text: "L'engin ne peut plus que rouler droit et rate automatiquement ses jets de Dextérité.", effect: 'noturn', dc: 15, ability: 'dex' },
-  { id: 3, min: 5, max: 7, name: 'Fournaise fissurée', text: 'Vitesse réduite de 30 ft (6 cases) jusqu’à réparation.', effect: 'slow6', dc: 15, ability: 'str' },
-  { id: 4, min: 8, max: 10, name: 'Arme enrayée', text: "Une arme (au choix du MJ) est inutilisable jusqu'à réparation.", effect: 'jam', dc: 20, ability: 'str' },
-  { id: 5, min: 11, max: 13, name: 'Fumée aveuglante', text: 'Le poste de pilotage est plein de fumée : le pilote est aveuglé.', effect: 'smoke', dc: 15, ability: 'dex' },
-  { id: 6, min: 14, max: 16, name: 'Blindage arraché', text: 'Seuil de dégâts réduit de 10 jusqu’à réparation.', effect: 'armor', dc: 15, ability: 'str' },
-  { id: 7, min: 17, max: 19, name: 'Essieu faussé', text: "Désavantage à tous les jets de Dextérité de l'engin et aux jets de caractéristique et d'attaque de l'équipage.", effect: 'axle', dc: 20, ability: 'dex' },
-  { id: 8, min: 20, max: 20, name: 'Retournement', text: "L'engin se renverse et s'immobilise. À bord : Force DD 15 ou 3d6 dégâts contondants. Il ne peut se redresser seul.", effect: 'flip', dc: null, ability: null },
+  { id: 1, min: 1, max: 1, name: 'Flammes dans le moteur', text: "Le véhicule est enveloppé de flammes : toute créature qui commence son tour dans ou sur le véhicule subit 3d6 dégâts de feu jusqu'à la fin de l'incident.", effect: 'flare', dc: 15, ability: 'dex' },
+  { id: 2, min: 2, max: 4, name: 'Volant bloqué', text: "Le véhicule ne peut que rouler en ligne droite et rate automatiquement ses tests et jets de sauvegarde de Dextérité.", effect: 'noturn', dc: 15, ability: 'str' },
+  { id: 3, min: 5, max: 7, name: 'Chaudière fissurée', text: 'La vitesse du véhicule décroît de 9 m (6 cases).', effect: 'slow6', dc: 15, ability: 'str' },
+  { id: 4, min: 8, max: 10, name: 'Arme défaillante', text: "Une arme du véhicule (au choix du MJ) ne peut plus être utilisée.", effect: 'jam', dc: 20, ability: 'str' },
+  { id: 5, min: 11, max: 13, name: 'Fumée aveuglante', text: 'Le poste de pilotage se remplit de fumée : visibilité nulle, le pilote est aveuglé.', effect: 'smoke', dc: 15, ability: 'dex' },
+  { id: 6, min: 14, max: 16, name: 'Armure affaiblie', text: 'Le seuil de dégâts du véhicule est réduit de 10.', effect: 'armor', dc: 15, ability: 'str' },
+  { id: 7, min: 17, max: 19, name: 'Essieu endommagé', text: "Le véhicule est désavantagé à ses tests de Dextérité ; tests de caractéristique et jets d'attaque désavantagés pour ceux à bord.", effect: 'axle', dc: 20, ability: 'dex' },
+  { id: 8, min: 20, max: 20, name: 'Renversement', text: "Le véhicule se retourne et s'arrête. À bord : Force DD 15 ou 3d6 contondants, et à terre. Accrochés à l'extérieur : Force DD 20 ou éjectés.", effect: 'flip', dc: null, ability: null },
 ];
 
 const PC_COLORS = ['#5CF2C8', '#FFB020', '#C79BFF', '#5AA9FF'];
@@ -47,7 +47,7 @@ function mkPc(i) {
 
 const WEREBOAR_ATTACKS = () => [
   { name: 'Massue', toHit: 5, dmg: '2d6+3', type: 'contondant', range: 1.6, mag: 'none' },
-  { name: 'Défenses', toHit: 5, dmg: '1d10+3', type: 'tranchant', range: 1.6, mag: 'none', note: 'Humanoïde touché : Con DD 12 ou lycanthropie.' },
+  { name: 'Défenses', toHit: 5, dmg: '2d6+3', type: 'tranchant', range: 1.6, mag: 'none', note: 'Humanoïde touché : Con DD 12 ou lycanthropie.' },
 ];
 const WERERAT_ATTACKS = () => [
   { name: 'Épée courte', toHit: 4, dmg: '1d6+2', type: 'perforant', range: 1.6, mag: 'none' },
@@ -74,29 +74,55 @@ function mkWererat(id, name, extra = {}) {
   }, extra);
 }
 
-function stations(kind) {
-  // repère local : lx vers l'avant, ly vers tribord
+function stations() {
+  // repère local : lx vers l'avant, ly vers tribord. cover : bonus de CA des occupants (abri important +5, partiel +2).
   return [
-    { id: 'helm', label: 'Poste de pilotage', lx: 0.5, ly: 0, kind: 'helm' },
-    { id: 'chomper', label: 'Mâchoire broyeuse', lx: 1.35, ly: 0, kind: 'weapon', weapon: 'chomper' },
-    { id: 'ball', label: 'Boulet de démolition', lx: -0.5, ly: 1.05, kind: 'weapon', weapon: 'wrecking' },
-    { id: 'harpoonL', label: 'Lance-harpons bâbord', lx: -1.45, ly: -0.95, kind: 'weapon', weapon: 'harpoon' },
-    { id: 'harpoonR', label: 'Lance-harpons tribord', lx: -1.45, ly: 0.95, kind: 'weapon', weapon: 'harpoon' },
+    { id: 'helm', label: 'Poste de pilotage', lx: 0.5, ly: 0, kind: 'helm', cover: 5 },
+    { id: 'chomper', label: 'Masticateur', lx: 1.35, ly: 0, kind: 'weapon', weapon: 'chomper', cover: 2 },
+    { id: 'ball', label: 'Boule de démolition', lx: -0.5, ly: 1.05, kind: 'weapon', weapon: 'wrecking', cover: 2 },
+    { id: 'harpoonL', label: 'Lance-harpons bâbord', lx: -1.45, ly: -0.95, kind: 'weapon', weapon: 'harpoon', cover: 2 },
+    { id: 'harpoonR', label: 'Lance-harpons tribord', lx: -1.45, ly: 0.95, kind: 'weapon', weapon: 'harpoon', cover: 2 },
+  ];
+}
+function stationsTormentor() {
+  return [
+    { id: 'helm', label: 'Poste de pilotage', lx: 0.55, ly: 0, kind: 'helm', cover: 5 },
+    { id: 'harpoon', label: 'Lance-harpons', lx: -0.95, ly: 0, kind: 'weapon', weapon: 'harpoon', cover: 2 },
+    { id: 'seatL', label: 'Passager bâbord', lx: -0.15, ly: -0.62, kind: 'seat', cover: 0 },
+    { id: 'seatR', label: 'Passager tribord', lx: -0.15, ly: 0.62, kind: 'seat', cover: 0 },
   ];
 }
 
 function mkGrinder(id, name, side, extra = {}) {
   return Object.assign({
-    id, name, kind: 'vehicle', side, sprite: side === 'party' ? 'grinder-party' : 'grinder-enemy',
+    id, name, kind: 'vehicle', side, sprite: side === 'party' ? 'grinder-party' : 'grinder-enemy', model: 'grinder',
     color: side === 'party' ? '#5CF2C8' : '#FF5A1F',
     len: 4, wid: 3, x: 0, y: 0, r: 0,
-    hp: 200, maxHp: 200, ac: 19, speed: 20, immune: ['feu', 'poison', 'psychique'], conditions: [], hidden: false, init: null,
+    hp: 200, maxHp: 200, ac: 19, acStopped: 19, speed: 20, immune: ['feu', 'poison', 'psychique'], conditions: [], hidden: false, init: null,
+    crush: { maxSize: 2, dc: 11, dice: '4d10', label: 'Roues écrasantes' },
     veh: {
-      dmgThreshold: 10, mishapThreshold: 20, soulCoins: side === 'party' ? 3 : 0, pilotBonus: 5,
-      stations: stations(), movedTurn: 0, distTurn: 0, dashed: false, dashLeft: 4, overdrive: false, driving: false, stopped: false, flipped: false, crushed: [],
+      dmgThreshold: 10, mishapThreshold: 20, soulCoins: side === 'party' ? 0 : 3, ichor: 0, pilotBonus: 0,
+      stations: stations(), movedTurn: 0, distTurn: 0, dashed: false, dashLeft: 4, overdrive: false, turboLeft: 0, driving: false, stopped: false, flipped: false, crushed: [], lashUsed: false,
       mishaps: [], jam: null, destroyed: false,
     },
-    sheet: 'Broyeur de démons — véhicule de guerre infernal — valeurs du livre (Demon Grinder), règles de déplacement maison',
+    sheet: 'Broyeur de démons — Gigantesque, 8 créatures — Descente en Averne p. 219 (déplacements : règles maison)',
+  }, extra);
+}
+function mkTormentor(id, name, side, extra = {}) {
+  return Object.assign({
+    id, name, kind: 'vehicle', side, sprite: 'tormentor', model: 'tormentor',
+    color: side === 'party' ? '#5CF2C8' : '#FF5A1F',
+    len: 3.4, wid: 2.4, x: 0, y: 0, r: 0,
+    hp: 60, maxHp: 60, ac: 21, acStopped: 19, speed: 20, immune: ['feu', 'poison', 'psychique'], conditions: [], hidden: false, init: null,
+    crush: { maxSize: 1, dc: 13, dice: '2d10', label: 'Roues écrasantes' },
+    lash: { dc: 13, dmg: '2d10+2', label: 'Faux balayantes' },
+    veh: {
+      dmgThreshold: 10, mishapThreshold: 20, soulCoins: 0, ichor: 1, pilotBonus: 0,
+      stations: stationsTormentor(), weapons: { harpoon: { toHit: 7, dmg: '2d8+2' } },
+      movedTurn: 0, distTurn: 0, dashed: false, dashLeft: 2, overdrive: false, turboLeft: 0, driving: false, stopped: false, flipped: false, crushed: [], lashUsed: false,
+      mishaps: [], jam: null, destroyed: false,
+    },
+    sheet: 'Tortionnaire — Très Grande taille, 4 créatures — Descente en Averne p. 218 (déplacements : règles maison)',
   }, extra);
 }
 
@@ -109,11 +135,11 @@ function initialTokens(map) {
   const tokens = {};
   const P = map.spawn.party, E = map.spawn.enemy;
 
-  const vp = mkGrinder('v-party', 'Broyeuse des aventuriers', 'party', { x: P.x, y: P.y, r: P.r });
-  const ve = mkGrinder('v-enemy', 'Broyeuse de Raggadragga', 'enemy', { x: E.x, y: E.y, r: E.r, hidden: true });
+  const vp = mkTormentor('v-party', 'Tortionnaire des aventuriers', 'party', { x: P.x, y: P.y, r: P.r });
+  const ve = mkGrinder('v-enemy', 'Broyeur de démons de Raggadragga', 'enemy', { x: E.x, y: E.y, r: E.r, hidden: true });
   tokens[vp.id] = vp; tokens[ve.id] = ve;
 
-  const crewP = ['helm', 'ball', 'harpoonL', 'harpoonR'];
+  const crewP = ['helm', 'harpoon', 'seatL', 'seatR'];
   for (let i = 0; i < 4; i++) {
     const pc = mkPc(i);
     aboard(pc, vp, crewP[i]);
@@ -121,8 +147,8 @@ function initialTokens(map) {
   }
 
   const rag = mkWereboar('raggadragga', 'Raggadragga', {
-    boss: true, color: '#E0361F', hp: 78, maxHp: 78,
-    sheet: 'Raggadragga — sanglier-garou, chef des Tripes Sanglantes — FP 4 — [résumé + MM]',
+    boss: true, color: '#E0361F', hp: 120, maxHp: 120,
+    sheet: 'Raggadragga — sanglier-garou (forme hybride), seigneur de guerre des Tripes sanglantes — 120 PV (p. 87) — profil de base : Manuel des Monstres',
     attacks: WEREBOAR_ATTACKS().concat([
       { name: 'Bandeau de décharge (rayon ardent)', toHit: 5, dmg: '2d6', type: 'feu', range: 24, mag: 'magic', rays: 3, uses: { max: 1, left: 1 }, note: 'Bandeau magique : 3 rayons, une fois par aube.' },
     ]),
@@ -155,7 +181,7 @@ const BEATS = [
   },
   {
     id: 'ambush', title: 'Les Tripes Sanglantes surgissent', icon: '🐗',
-    read: "Un engin colossal jaillit du nuage : une broyeuse de démon, cheminées crachant des flammes, tambour de dents de fer qui tourne à vide. Sur le pont, des silhouettes de sangliers et de rats hurlent à pleins poumons.",
+    read: "Un panache de poussière rouge s'élève dans le lointain, créé par une grande machine de guerre infernale arrivant en trombe : un Broyeur de démons couvert de sang, avec des crocs métalliques grinçants à l'avant et une boule de démolition qui se balance derrière. Son équipage est constitué d'humanoïdes avec des têtes de sanglier et de rats, tous équipés de grosses lunettes.",
     do: [
       { t: 'reveal', ids: ['v-enemy', 'raggadragga', 'jibbs', 'oozywog', 'finnik', 'yeegha'] },
       { t: 'music', level: 2 }, { t: 'sfx', name: 'roar' }, { t: 'sfx', name: 'engineSurge' },
@@ -180,7 +206,7 @@ const BEATS = [
   },
   {
     id: 'fury', title: 'Raggadragga fou de rage', icon: '🔥',
-    read: "Blessé, Raggadragga mord ses propres lèvres jusqu'au sang. Il écrase l'accélérateur : la broyeuse hurle, ses cheminées crachent des gerbes d'étincelles.",
+    read: "Blessé, Raggadragga mord ses propres lèvres jusqu'au sang. Il écrase l'accélérateur : le Broyeur hurle, ses cheminées crachent des gerbes d'étincelles.",
     do: [
       { t: 'speech', who: 'Raggadragga', text: 'Je vais vous écraser sous mes roues !' },
       { t: 'music', level: 3 }, { t: 'sfx', name: 'roar' }, { t: 'flash', color: '#ff3a1a' }, { t: 'shake', amp: 10 },
@@ -206,7 +232,7 @@ const BEATS = [
   },
   {
     id: 'defeat', title: 'Capturés', icon: '⛓',
-    read: "Les lames cessent de tomber. On vous attache les poignets avec des câbles de harpon ; la broyeuse fait demi-tour dans un nuage de cendres.",
+    read: "Les lames cessent de tomber. On vous attache les poignets avec des câbles de harpon ; le Broyeur fait demi-tour dans un nuage de cendres.",
     do: [
       { t: 'music', level: 0 }, { t: 'sfx', name: 'defeat' },
       { t: 'banner', text: 'Capturés', sub: 'La route vers Mad Maggie' },
@@ -215,4 +241,4 @@ const BEATS = [
   },
 ];
 
-module.exports = { WEAPONS, MISHAPS, BEATS, PC_COLORS, mkPc, mkGrinder, mkWereboar, mkWererat, initialTokens, stations, aboard, pcAttacks };
+module.exports = { WEAPONS, MISHAPS, BEATS, PC_COLORS, mkPc, mkGrinder, mkTormentor, mkWereboar, mkWererat, initialTokens, stations, aboard, pcAttacks };

@@ -265,6 +265,109 @@
     ctx.restore();
   }
 
+
+  /* ===================== TORTIONNAIRE (buggy à roues lames) ===================== */
+  // Repère local : x avant, y tribord. Longueur 3,4 × largeur 2,4. anim : t, tread, spin, aimL (tourelle de harpon), fireL, speed, destroyed, hpPct, id
+  function tormentor(ctx, v, anim) {
+    const side = v.side === 'party' ? 'party' : 'enemy';
+    const P = PAL[side];
+    const t = anim.t, dead = anim.destroyed, hs = hashStr(anim.id || v.id || 'x');
+    const pulse = 0.5 + 0.5 * Math.sin(t * (3 + anim.speed * 7));
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+    // --- roues à lames ---
+    const wheels = [[0.95, -1.0], [0.95, 1.0], [-0.95, -1.0], [-0.95, 1.0]];
+    for (const [wx, wy] of wheels) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = 8; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 4;
+      ctx.fillStyle = dead ? '#120d0c' : '#171211';
+      rr(ctx, wx - 0.5, wy - 0.27, 1.0, 0.54, 0.22); ctx.fill();
+      ctx.restore();
+      ctx.save();
+      rr(ctx, wx - 0.5, wy - 0.27, 1.0, 0.54, 0.22); ctx.clip();
+      if (!dead) {
+        ctx.strokeStyle = '#3a2f2c'; ctx.lineWidth = 0.07;
+        const step = 0.2, off = (anim.tread % step + step) % step;
+        for (let x = wx - 0.5 - step + off; x < wx + 0.5; x += step) { ctx.beginPath(); ctx.moveTo(x, wy - 0.26); ctx.lineTo(x, wy + 0.26); ctx.stroke(); }
+      }
+      ctx.restore();
+      // lames périphériques qui tournent avec la roue
+      ctx.fillStyle = dead ? '#3a2a24' : P.trim;
+      const n = 9, ph = (anim.tread * 1.1) % (1.0 / n * 2);
+      const out = wy < 0 ? -1 : 1;
+      for (let i = 0; i < n; i++) {
+        const x = wx - 0.46 + ((i / (n - 1)) * 0.92 + ph) % 0.92;
+        ctx.beginPath(); ctx.moveTo(x - 0.05, wy + out * 0.26); ctx.lineTo(x + 0.05, wy + out * 0.26); ctx.lineTo(x + 0.01, wy + out * 0.46); ctx.closePath(); ctx.fill();
+      }
+      ctx.fillStyle = dead ? '#2a1d1a' : P.dark; ctx.beginPath(); ctx.arc(wx, wy, 0.15, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = P.light; ctx.globalAlpha = 0.5; ctx.lineWidth = 0.03; ctx.stroke(); ctx.globalAlpha = 1;
+    }
+
+    // --- châssis ---
+    const hull = [[-1.55, -0.66], [-1.55, 0.66], [0.55, 0.84], [1.5, 0.4], [1.5, -0.4], [0.55, -0.84]];
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 10; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 5;
+    const g = ctx.createLinearGradient(0, -0.85, 0, 0.85);
+    if (dead) { g.addColorStop(0, '#1d1513'); g.addColorStop(1, '#0d0908'); }
+    else { g.addColorStop(0, P.mid); g.addColorStop(0.5, P.base); g.addColorStop(1, P.dark); }
+    ctx.fillStyle = g; ctx.beginPath(); hull.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = dead ? '#000' : P.light; ctx.globalAlpha = 0.55; ctx.lineWidth = 0.05;
+    ctx.beginPath(); hull.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1;
+    // pointes du capot
+    ctx.fillStyle = dead ? '#2a1d1a' : P.trim;
+    ctx.beginPath(); ctx.moveTo(1.5, -0.14); ctx.lineTo(2.05, 0); ctx.lineTo(1.5, 0.14); ctx.closePath(); ctx.fill();
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(1.2, s * 0.58); ctx.lineTo(1.5, s * 0.72); ctx.lineTo(1.42, s * 0.5); ctx.closePath(); ctx.fill(); }
+    // nervures
+    ctx.strokeStyle = dead ? '#000' : P.dark; ctx.lineWidth = 0.05; ctx.globalAlpha = 0.7;
+    for (const x of [-1.1, -0.7, -0.3, 0.1]) { ctx.beginPath(); ctx.moveTo(x, -0.62); ctx.lineTo(x, 0.62); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+
+    if (!dead) {
+      // pare-brise et fournaise
+      ctx.fillStyle = 'rgba(8,12,12,0.85)'; rr(ctx, 0.78, -0.4, 0.2, 0.8, 0.06); ctx.fill();
+      ctx.fillStyle = `rgba(${side === 'party' ? '92,242,200' : '255,106,31'},${0.35 + 0.35 * pulse})`; ctx.fillRect(0.8, -0.34, 0.05, 0.68);
+      const fg = ctx.createRadialGradient(-1.2, 0, 0, -1.2, 0, 0.45);
+      fg.addColorStop(0, `rgba(255,${side === 'party' ? 220 : 150},60,${0.6 + 0.3 * pulse})`); fg.addColorStop(1, 'rgba(255,60,20,0)');
+      ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(-1.2, 0, 0.45, 0, Math.PI * 2); ctx.fill();
+    }
+    // échappements
+    ctx.fillStyle = dead ? '#120d0c' : '#171211';
+    for (const s of [-1, 1]) { rr(ctx, -1.78, s * 0.36 - 0.1, 0.32, 0.2, 0.08); ctx.fill(); }
+
+    // sièges des passagers
+    ctx.fillStyle = dead ? '#1a1311' : P.dark; ctx.strokeStyle = P.light; ctx.globalAlpha = 0.9; ctx.lineWidth = 0.03;
+    for (const s of [-1, 1]) { rr(ctx, -0.42, s * 0.62 - 0.24, 0.5, 0.48, 0.1); ctx.fill(); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+
+    // tourelle de lance-harpons
+    ctx.save(); ctx.translate(-0.95, 0);
+    ctx.fillStyle = P.dark; ctx.beginPath(); ctx.arc(0, 0, 0.32, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = P.trim; ctx.lineWidth = 0.05; ctx.stroke();
+    ctx.rotate(anim.aimL || 0);
+    const recoil = anim.fireL ? Math.max(0, 1 - (anim.t - anim.fireL) * 5) * 0.18 : 0;
+    ctx.fillStyle = dead ? '#1e1512' : '#2b2220'; rr(ctx, -0.1 - recoil, -0.11, 0.95, 0.22, 0.05); ctx.fill();
+    ctx.strokeStyle = P.light; ctx.globalAlpha = 0.5; ctx.lineWidth = 0.025; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = P.trim; ctx.beginPath(); ctx.moveTo(0.85 - recoil, -0.07); ctx.lineTo(1.12 - recoil, 0); ctx.lineTo(0.85 - recoil, 0.07); ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // dégâts
+    const dmg = 1 - Math.max(0, Math.min(100, anim.hpPct == null ? 100 : anim.hpPct)) / 100;
+    if (dmg > 0.2 || dead) {
+      ctx.save(); ctx.beginPath(); hull.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.clip();
+      const n = Math.round(3 + dmg * 7);
+      for (let i = 0; i < n; i++) {
+        const a = hashStr('s' + i + hs), b = hashStr('t' + i + hs), c = hashStr('u' + i + hs);
+        const x = -1.5 + a * 3, y = -0.7 + b * 1.4, r = 0.14 + c * 0.35 * dmg + (dead ? 0.12 : 0);
+        const sg = ctx.createRadialGradient(x, y, 0, x, y, r); sg.addColorStop(0, 'rgba(0,0,0,0.6)'); sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      if (dead) { ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,100,20,' + (0.35 + 0.25 * Math.sin(t * 5)) + ')'; ctx.lineWidth = 0.05; for (let i = 0; i < 5; i++) { const a = hashStr('c' + i + hs), b = hashStr('d' + i + hs); ctx.beginPath(); ctx.moveTo(-1.4 + a * 2.8, -0.6 + b * 1.2); ctx.lineTo(-1.4 + b * 2.8, -0.6 + a * 1.2); ctx.stroke(); } }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   /* ===================== ICÔNES DE CRÉATURES ===================== */
   function iconBoar(ctx, u, col) {
     ctx.save(); ctx.scale(u, u); ctx.fillStyle = col; ctx.strokeStyle = col;
@@ -372,5 +475,5 @@
     ctx.restore();
   }
 
-  window.Sprites = { grinder, creature, PAL, rr, COND };
+  window.Sprites = { grinder, tormentor, creature, PAL, rr, COND };
 })();

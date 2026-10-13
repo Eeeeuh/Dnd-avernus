@@ -36,18 +36,18 @@ g.geo.rocks = []; g.geo.lava = [];
 const x0 = vp.x;
 r = act(P(1), { a: 'move', id: 'v-party', x: x0 + 8, y: vp.y, r: 0 });
 ok('pilote avance de 8 cases', r.ok && Math.abs(vp.x - (x0 + 8)) < 1e-6);
-ok('équipage suit le véhicule', Math.abs(g.tok('p3').x - R.toWorld(vp, vp.veh.stations.find((s) => s.id === 'harpoonL').lx, vp.veh.stations.find((s) => s.id === 'harpoonL').ly).x) < 1e-6);
+ok('équipage suit le véhicule', Math.abs(g.tok('p3').x - R.toWorld(vp, vp.veh.stations.find((s) => s.id === 'seatL').lx, vp.veh.stations.find((s) => s.id === 'seatL').ly).x) < 1e-6);
 ok('conduire consomme l\'action du pilote', g.tok('p1').turn.action === true);
 r = act(P(1), { a: 'move', id: 'v-party', x: vp.x + 14, y: vp.y, r: 0 });
 ok('dépasse le budget de 20 cases : refusé', !r.ok && /Trop loin/.test(r.err));
 r = act(P(1), { a: 'move', id: 'v-party', x: vp.x, y: vp.y + 3, r: 0 });
 ok('dérapage latéral refusé', !r.ok && /crabe/.test(r.err));
-ok('overdrive consomme une pièce d\'âme', act(P(1), { a: 'overdrive', id: 'v-party' }).ok && vp.veh.soulCoins === 2);
-ok('surrégime = action bonus', g.tok('p1').turn.bonus === true);
+ok('turbo : consomme une flasque d\'ichor', act(P(1), { a: 'overdrive', id: 'v-party' }).ok && vp.veh.ichor === 0 && vp.veh.turboLeft === 10);
+ok('turbo = action bonus', g.tok('p1').turn.bonus === true);
 ok('Foncer refusé : action bonus déjà prise', !act(P(1), { a: 'dash', id: 'v-party' }).ok);
 r = act(P(1), { a: 'move', id: 'v-party', x: vp.x + 16, y: vp.y, r: 0 });
 if (!r.ok) console.log('   raison :', r.err);
-ok('+6 cases après surrégime (24 ≤ 26)', r.ok);
+ok('+6 cases après turbo (24 ≤ 26)', r.ok);
 ok('le joueur 2 ne pilote pas', !act(P(2), { a: 'move', id: 'v-party', x: vp.x + 1, y: vp.y }).ok);
 
 console.log('Attaques');
@@ -81,23 +81,23 @@ const vp2 = g.tok('v-party');
 vp2.x = 20; vp2.y = 24; vp2.r = 0; g.syncCrew(vp2);
 ve2.x = 30; ve2.y = 24; ve2.r = 180; g.syncCrew(ve2);
 let tether = null;
-for (let i = 0; i < 40 && !tether; i++) { g.startTurn('p3'); g.s.activeId = 'p3'; act(P(3), { a: 'attack', id: 'p3', target: 'v-enemy', weapon: { src: 'station' }, adv: 'adv' }); tether = g.s.tethers[0]; }
+for (let i = 0; i < 40 && !tether; i++) { g.startTurn('p2'); g.s.activeId = 'p2'; act(P(2), { a: 'attack', id: 'p2', target: 'v-enemy', weapon: { src: 'station' }, adv: 'adv' }); tether = g.s.tethers[0]; }
 ok('harpon planté : câble créé', !!tether);
 if (tether) {
   const d0 = R.dist(vp2, ve2);
-  g.startTurn('p3'); g.s.activeId = 'p3';
-  r = act(P(3), { a: 'reel', id: 'p3', tether: tether.id });
+  g.startTurn('p2'); g.s.activeId = 'p2';
+  r = act(P(2), { a: 'reel', id: 'p2', tether: tether.id });
   ok('treuil rapproche les véhicules', r.ok && R.dist(vp2, ve2) < d0);
 }
 
 console.log('Éperonnage');
-vp2.x = 20; vp2.y = 24; vp2.r = 0; g.syncCrew(vp2); ve2.x = 25.2; ve2.y = 24; g.syncCrew(ve2);
+vp2.x = 20; vp2.y = 24; vp2.r = 0; g.syncCrew(vp2); ve2.x = 24.6; ve2.y = 24; g.syncCrew(ve2);
 g.s.tethers = [];
 g.startTurn('p1'); g.s.activeId = 'p1';
 vp2.veh.distTurn = 0; vp2.veh.ramUsed = false; vp2.veh.stopped = false;
 r = act(P(1), { a: 'ram', id: 'v-party', target: 'v-enemy' });
 ok('éperonner sans avoir roulé : refusé', !r.ok && /roulé/.test(r.err));
-vp2.veh.movedTurn = 10; vp2.veh.distTurn = 10; vp2.veh.ramUsed = false;
+vp2.veh.movedTurn = 10; vp2.veh.distTurn = 20; vp2.veh.ramUsed = false;
 const hpA = vp2.hp, hpB = ve2.hp;
 r = act(P(1), { a: 'ram', id: 'v-party', target: 'v-enemy' });
 ok('collision avec élan : acceptée', r.ok);
@@ -108,7 +108,7 @@ ok('une seule collision par tour', !r.ok);
 
 console.log('Règles du livre : CA, dash, avaries, immunités');
 const vt = g.tok('v-enemy'); vt.veh.movedTurn = 0;
-ok('CA 17 à l\'arrêt', g.targetAC(vt) === 17);
+ok('CA de l\'engin à l\'arrêt (19)', g.targetAC(vt) === 19);
 vt.veh.movedTurn = 3;
 ok('CA 19 en mouvement', g.targetAC(vt) === 19);
 ok('immunité feu/poison/psychique', vt.immune.includes('feu') && vt.immune.includes('poison') && vt.immune.includes('psychique'));
@@ -125,6 +125,45 @@ vv.veh.mishaps = []; g.rollMishap; vv.veh.flipped = true;
 ok('retourné : pas de conduite pour un joueur', (vv.veh.mishaps.push({ id: 8, name: 'Retournement', effect: 'flip' }), g.startTurn('p1'), !act(P(1), { a: 'move', id: 'v-party', x: vv.x + 1, y: vv.y, r: 0 }).ok));
 act(GM, { a: 'repair', id: 'v-party' });
 ok('le MJ redresse l\'engin', vv.veh.flipped === false);
+
+
+console.log('Profils du livre : Tortionnaire, Broyeur, Raggadragga');
+const T = g.tok('v-party'), B = g.tok('v-enemy');
+ok('Tortionnaire : 60 PV, CA 21 (19 à l\'arrêt), vitesse 20 cases', T.maxHp === 60 && T.ac === 21 && T.acStopped === 19 && T.speed === 20);
+ok('Tortionnaire : 4 places, un seul lance-harpons +7 (2d8+2)', T.veh.stations.length === 4 && T.veh.stations.filter((x) => x.kind === 'weapon').length === 1 && T.veh.weapons.harpoon.toHit === 7);
+ok('Broyeur : 200 PV, CA 19, masticateur +9 6d6+4, boule +9 8d8+4', B.maxHp === 200 && B.ac === 19 && Enc.WEAPONS.chomper.toHit === 9 && Enc.WEAPONS.chomper.dmg === '6d6+4' && Enc.WEAPONS.wrecking.dmg === '8d8+4');
+ok('Raggadragga : 120 PV', g.tok('raggadragga').maxHp === 120);
+ok('Tortionnaire : en mouvement CA 21, à l\'arrêt 19', (T.veh.movedTurn = 4, g.targetAC(T) === 21) && (T.veh.movedTurn = 0, g.targetAC(T) === 19));
+const pilot = g.tok('p1');
+ok('abri du pilote : +5 à la CA', g.targetAC(pilot) === pilot.ac + 5);
+ok('passager sans abri', g.targetAC(g.tok('p3')) === g.tok('p3').ac);
+// attaque contre un véhicule à l'arrêt : avantage (2 dés)
+T.veh.movedTurn = 0;
+let sawAdv = false; for (let i = 0; i < 5; i++) { const rr = g.strike(g.tok('jibbs'), { toHit: 0, dmg: '1d4', type: 'tranchant', mag: 'none' }, T, {}); if (rr.rolls.length === 2) sawAdv = true; }
+ok('véhicule à l\'arrêt : attaques avantagées', sawAdv);
+// Roues écrasantes
+const victim = g.tok('jibbs'); victim.dexSave = -50; victim.relentlessUsed = true; victim.conditions = []; victim.hp = 78; victim.hidden = false; victim.dead = false; victim.aboard = null;
+const rg = g.tok('raggadragga'); rg.dead = false; rg.hp = rg.maxHp; rg.conditions = []; rg.hidden = false; Enc.aboard(rg, B, 'helm'); B.veh.destroyed = false; B.hp = 200;
+B.x = 40; B.y = 24; B.r = 0; g.syncCrew(B); victim.x = 42.4; victim.y = 24;
+B.veh.distTurn = 8; B.veh.movedTurn = 8; B.veh.crushed = []; B.veh.stopped = false; B.veh.ramUsed = false;
+g.s.activeId = 'raggadragga'; g.tok('raggadragga').turn = { moved: 0, attacks: 0, action: true, bonus: false, reaction: false };
+const before2 = victim.hp;
+r = act(GM, { a: 'ram', id: 'v-enemy', target: 'jibbs' });
+ok('Roues écrasantes (Dex ratée) : 4d10 + à terre', r.ok && victim.hp < before2 && victim.conditions.includes('à terre') && before2 - victim.hp >= 4);
+r = act(GM, { a: 'ram', id: 'v-enemy', target: 'jibbs' });
+ok('Roues écrasantes : une fois par créature et par tour (MJ peut passer outre)', r.ok);
+// Faux balayantes
+T.x = 20; T.y = 10; T.r = 0; g.syncCrew(T); victim.x = 21.9; victim.y = 10; victim.conditions = []; victim.hp = 78; victim.dead = false;
+T.veh.distTurn = 5; T.veh.lashUsed = false; g.tok('p1').turn = { moved: 0, attacks: 0, action: true, bonus: false, reaction: false }; g.s.activeId = 'p1';
+const hpL = victim.hp; let lashed = false;
+for (let i = 0; i < 25 && !lashed; i++) { T.veh.lashUsed = false; victim.dexSave = -50; act(P(1), { a: 'lash', id: 'v-party', target: 'jibbs' }); if (victim.hp < hpL) lashed = true; }
+ok('Faux balayantes : 2d10+2 tranchants (DD 13)', lashed);
+ok('Faux balayantes : une fois par tour', (T.veh.lashUsed = true, !act(P(1), { a: 'lash', id: 'v-party', target: 'jibbs' }).ok));
+// Masticateur : broyé
+const lunch = g.tok('yeegha'); lunch.hp = 1; lunch.dead = false; lunch.hidden = false; lunch.aboard = null; lunch.relentless = false; lunch.x = 30; lunch.y = 30;
+for (let i = 0; i < 30 && !lunch.dead; i++) { lunch.hp = 1; g.strike(g.tok('jibbs'), Object.assign({}, Enc.WEAPONS.chomper, { toHit: 50 }), lunch, { adv: 'adv' }); }
+ok('Masticateur : cible à 0 PV broyée', lunch.dead === true && lunch.hp === 0);
+ok('feu : le Broyeur est immunisé', (() => { let rr; for (let i = 0; i < 30; i++) { rr = g.strike(g.tok('p1'), { toHit: 50, dmg: '4d6', type: 'feu', mag: 'magic' }, B, {}); if (rr.hit) break; } return rr.immune === true && rr.applied === 0; })());
 
 console.log('Fin de partie');
 ok('GM peut révéler / cacher', act(GM, { a: 'gmReveal', id: 'jibbs', hidden: true }).ok && g.tok('jibbs').hidden === true);

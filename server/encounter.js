@@ -47,11 +47,11 @@ function mkPc(i) {
 
 const WEREBOAR_ATTACKS = () => [
   { name: 'Massue', toHit: 5, dmg: '2d6+3', type: 'contondant', range: 1.6, mag: 'none' },
-  { name: 'Défenses', toHit: 5, dmg: '2d6+3', type: 'tranchant', range: 1.6, mag: 'none', note: 'Humanoïde touché : Con DD 12 ou lycanthropie.' },
+  { name: 'Défenses', toHit: 5, dmg: '2d6+3', type: 'tranchant', range: 1.6, mag: 'none', charge: true, note: 'Charge : si la créature a avancé d\'au moins 4,50 m (3 cases) en ligne droite, +2d6 tranchants et Force DD 13 ou à terre. Humanoïde touché : Con DD 12 ou lycanthropie. Une seule des deux attaques peut être les défenses.' },
 ];
 const WERERAT_ATTACKS = () => [
   { name: 'Épée courte', toHit: 4, dmg: '1d6+2', type: 'perforant', range: 1.6, mag: 'none' },
-  { name: 'Arbalète de poing', toHit: 4, dmg: '1d6+2', type: 'perforant', range: 6, mag: 'none' },
+  { name: 'Arbalète de poing', toHit: 4, dmg: '1d6+2', type: 'perforant', range: 24, mag: 'none' },
   { name: 'Morsure', toHit: 4, dmg: '1d4+2', type: 'perforant', range: 1.6, mag: 'none', note: 'Humanoïde touché : Con DD 11 ou lycanthropie.' },
 ];
 
@@ -61,16 +61,16 @@ function mkWereboar(id, name, extra = {}) {
     hp: 78, maxHp: 78, ac: 11, speed: 6, initMod: 0, dexSave: 0, init: null,
     attacks: WEREBOAR_ATTACKS(), conditions: [], hidden: true,
     immuneNonMagical: true, relentless: true, relentlessUsed: false,
-    sheet: 'Sanglier-garou (forme hybride) — FP 4 — [MM]',
+    sheet: 'Sanglier-garou (forme hybride) — FP 4 — 78 PV, CA 11 (AideDD)',
   }, extra);
 }
 function mkWererat(id, name, extra = {}) {
   return Object.assign({
     id, name, kind: 'creature', side: 'enemy', sprite: 'wererat', color: '#B3202A', size: 1, x: 0, y: 0, r: 0,
-    hp: 60, maxHp: 60, ac: 12, speed: 6, initMod: 2, dexSave: 2, init: null,
+    hp: 33, maxHp: 33, ac: 12, speed: 6, initMod: 2, dexSave: 2, init: null,
     attacks: WERERAT_ATTACKS(), conditions: [], hidden: true,
     immuneNonMagical: true,
-    sheet: 'Rat-garou (forme hybride) — FP 2 — [MM]',
+    sheet: 'Rat-garou (forme hybride) — FP 2 — 33 PV, CA 12 (AideDD)',
   }, extra);
 }
 

@@ -439,6 +439,13 @@ class Game {
     const dmg = Dice.roll(w.dmg, { crit });
     res.dmgRaw = dmg.total; res.dmgText = dmg.text;
     let dealt = dmg.total;
+    // Charge du sanglier-garou : 3 cases en ligne droite avant l'attaque
+    if (w.charge && !isTether && target.kind === 'creature' && att.turn && att.turn.moved >= 3) {
+      const extra = Dice.roll('2d6', { crit }); dealt += extra.total; res.dmgRaw += extra.total; res.charge = extra.total;
+      const sv = Dice.d20().kept + (target.strSave || 0);
+      if (sv < 13 && !target.conditions.includes('à terre')) { target.conditions.push('à terre'); res.knockedDown = true; }
+      this.log({ kind: 'sys', text: `Charge : +${extra.total} tranchants ; ${target.name} Force ${sv} (DD 13) — ${sv < 13 ? 'à terre' : 'reste debout'}.` });
+    }
     const rank = (x) => (x === 'magic' ? 2 : x === 'silver' ? 1 : 0);
     const mag = rank(o.mag) >= rank(w.mag) ? (o.mag || 'none') : w.mag;
     if (!isTether && target.kind === 'creature') {
